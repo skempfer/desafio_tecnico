@@ -1,7 +1,6 @@
 import Config
 
 config :w_core, WCore.Repo,
-  database: Path.expand("../w_core_dev.db", __DIR__),
   pool_size: 5,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
@@ -42,8 +41,3 @@ config :phoenix_live_view,
   enable_expensive_runtime_checks: true
 
 config :swoosh, :api_client, false
-
-config :w_core, WCore.Repo,
-  database: "w_core_dev.sqlite3",
-  pool_size: 5,
-  show_sensitive_data_on_connection_error: true

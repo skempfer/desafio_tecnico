@@ -33,6 +33,7 @@ defmodule WCore.MixProject do
 
   defp deps do
     [
+      {:pbkdf2_elixir, "~> 2.0"},
       {:phoenix, "~> 1.8.5"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},

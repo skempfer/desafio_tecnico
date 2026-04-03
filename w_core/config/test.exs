@@ -1,5 +1,8 @@
 import Config
 
+# Only in tests, remove the complexity from the password hashing algorithm
+config :pbkdf2_elixir, :rounds, 1
+
 config :w_core, WCore.Repo,
   database: Path.expand("../w_core_test.db", __DIR__),
   pool_size: 5,
