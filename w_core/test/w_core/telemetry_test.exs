@@ -1,0 +1,93 @@
+defmodule WCore.TelemetryTest do
+  use WCore.DataCase
+
+  alias WCore.Telemetry
+
+  describe "nodes" do
+    alias WCore.Telemetry.Node
+
+    import WCore.AccountsFixtures, only: [user_scope_fixture: 0]
+    import WCore.TelemetryFixtures
+
+    @invalid_attrs %{location: nil, machine_identifier: nil}
+
+    test "list_nodes/1 returns all scoped nodes" do
+      scope = user_scope_fixture()
+      other_scope = user_scope_fixture()
+      node = node_fixture(scope)
+      other_node = node_fixture(other_scope)
+      assert Telemetry.list_nodes(scope) == [node]
+      assert Telemetry.list_nodes(other_scope) == [other_node]
+    end
+
+    test "get_node!/2 returns the node with given id" do
+      scope = user_scope_fixture()
+      node = node_fixture(scope)
+      other_scope = user_scope_fixture()
+      assert Telemetry.get_node!(scope, node.id) == node
+      assert_raise Ecto.NoResultsError, fn -> Telemetry.get_node!(other_scope, node.id) end
+    end
+
+    test "create_node/2 with valid data creates a node" do
+      valid_attrs = %{location: "some location", machine_identifier: "some machine_identifier"}
+      scope = user_scope_fixture()
+
+      assert {:ok, %Node{} = node} = Telemetry.create_node(scope, valid_attrs)
+      assert node.location == "some location"
+      assert node.machine_identifier == "some machine_identifier"
+      assert node.user_id == scope.user.id
+    end
+
+    test "create_node/2 with invalid data returns error changeset" do
+      scope = user_scope_fixture()
+      assert {:error, %Ecto.Changeset{}} = Telemetry.create_node(scope, @invalid_attrs)
+    end
+
+    test "update_node/3 with valid data updates the node" do
+      scope = user_scope_fixture()
+      node = node_fixture(scope)
+      update_attrs = %{location: "some updated location", machine_identifier: "some updated machine_identifier"}
+
+      assert {:ok, %Node{} = node} = Telemetry.update_node(scope, node, update_attrs)
+      assert node.location == "some updated location"
+      assert node.machine_identifier == "some updated machine_identifier"
+    end
+
+    test "update_node/3 with invalid scope raises" do
+      scope = user_scope_fixture()
+      other_scope = user_scope_fixture()
+      node = node_fixture(scope)
+
+      assert_raise MatchError, fn ->
+        Telemetry.update_node(other_scope, node, %{})
+      end
+    end
+
+    test "update_node/3 with invalid data returns error changeset" do
+      scope = user_scope_fixture()
+      node = node_fixture(scope)
+      assert {:error, %Ecto.Changeset{}} = Telemetry.update_node(scope, node, @invalid_attrs)
+      assert node == Telemetry.get_node!(scope, node.id)
+    end
+
+    test "delete_node/2 deletes the node" do
+      scope = user_scope_fixture()
+      node = node_fixture(scope)
+      assert {:ok, %Node{}} = Telemetry.delete_node(scope, node)
+      assert_raise Ecto.NoResultsError, fn -> Telemetry.get_node!(scope, node.id) end
+    end
+
+    test "delete_node/2 with invalid scope raises" do
+      scope = user_scope_fixture()
+      other_scope = user_scope_fixture()
+      node = node_fixture(scope)
+      assert_raise MatchError, fn -> Telemetry.delete_node(other_scope, node) end
+    end
+
+    test "change_node/2 returns a node changeset" do
+      scope = user_scope_fixture()
+      node = node_fixture(scope)
+      assert %Ecto.Changeset{} = Telemetry.change_node(scope, node)
+    end
+  end
+end
