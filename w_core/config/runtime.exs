@@ -6,18 +6,13 @@ end
 
 config :w_core, WCoreWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+database_path = System.get_env("DATABASE_PATH", "./data/w_core.sqlite3")
+
+config :w_core, WCore.Repo,
+  database: database_path,
+  pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5")
+
 if config_env() == :prod do
-  database_path =
-    System.get_env("DATABASE_PATH") ||
-      raise """
-      environment variable DATABASE_PATH is missing.
-      For example: /etc/w_core/w_core.db
-      """
-
-  config :w_core, WCore.Repo,
-    database: database_path,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5")
-
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||
       raise """
@@ -35,10 +30,4 @@ if config_env() == :prod do
       ip: {0, 0, 0, 0, 0, 0, 0, 0}
     ],
     secret_key_base: secret_key_base
-
-database_path = System.get_env("DATABASE_PATH") || "w_core_prod.sqlite3"
-config :w_core, WCore.Repo,
-  database: database_path,
-  pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
-
 end
