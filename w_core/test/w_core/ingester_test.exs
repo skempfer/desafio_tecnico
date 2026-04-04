@@ -57,10 +57,6 @@ defmodule WCore.Telemetry.IngesterTest do
     assert metric.total_events_processed == 2
   end
 
-  defp worker_pid do
-    Process.whereis(Worker)
-  end
-
   test "ingest_event persists the raw event before updating ETS" do
     timestamp = ~U[2024-06-05 12:00:00Z]
 
@@ -79,5 +75,17 @@ defmodule WCore.Telemetry.IngesterTest do
     assert event.status == "online"
     assert event.payload == %{"temp" => 25}
     assert event.processed_at == nil
+  end
+
+  test "ingest_event publishes lightweight dashboard signal" do
+    Phoenix.PubSub.subscribe(WCore.PubSub, "telemetry:dashboard")
+    ts = ~U[2024-06-05 12:00:00Z]
+
+    assert {:ok, 1} = Ingester.ingest_event("sensor-pubsub", "degraded", %{cpi: 90}, ts)
+    assert_receive {:node_changed, "sensor-pubsub", 1, ^ts}
+  end
+
+  defp worker_pid do
+    Process.whereis(Worker)
   end
 end

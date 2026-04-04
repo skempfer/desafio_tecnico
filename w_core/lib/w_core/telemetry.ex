@@ -466,4 +466,27 @@ defmodule WCore.Telemetry do
   def get_node_by_machine_identifier(machine_id) do
     Repo.get_by(Node, machine_identifier: machine_id)
   end
+
+  @dashboard_topic "telemetry:dashboard"
+
+  @doc """
+  Subscribes to lightweight dashboard update notifications.
+  """
+  @spec subscribe_dashboard_updates() :: :ok | {:error, term()}
+  def subscribe_dashboard_updates do
+    Phoenix.PubSub.subscribe(WCore.PubSub, @dashboard_topic)
+  end
+
+  @doc """
+  Broadcasts a lightweight invalidation event for dashboard consumers.
+  """
+  @spec broadcast_dashboard_node_changed(node_id(), event_count(), event_timestamp()) ::
+          :ok | {:error, term()}
+  def broadcast_dashboard_node_changed(machine_identifier, event_count, timestamp) do
+    Phoenix.PubSub.broadcast(
+      WCore.PubSub,
+      @dashboard_topic,
+      {:node_changed, machine_identifier, event_count, timestamp}
+    )
+  end
 end
