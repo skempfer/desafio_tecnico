@@ -9,6 +9,18 @@ defmodule WCore.Telemetry.NodeMetrics do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: integer() | nil,
+          node_id: integer() | nil,
+          node: WCore.Telemetry.Node.t() | Ecto.Association.NotLoaded.t() | nil,
+          status: String.t() | nil,
+          total_events_processed: integer() | nil,
+          last_payload: map() | nil,
+          last_seen_at: DateTime.t() | nil,
+          inserted_at: NaiveDateTime.t() | nil,
+          updated_at: NaiveDateTime.t() | nil
+        }
+
   schema "node_metrics" do
     belongs_to :node, WCore.Telemetry.Node
     field :status, :string

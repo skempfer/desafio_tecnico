@@ -10,6 +10,14 @@ defmodule WCore.Telemetry do
   alias WCore.Telemetry.NodeMetrics
   alias WCore.Telemetry.TelemetryEvent
 
+  @type node_id :: String.t()
+  @type node_status :: String.t()
+  @type payload :: map()
+  @type event_count :: non_neg_integer()
+  @type event_timestamp :: DateTime.t()
+  @type cache_record :: {node_id(), node_status(), event_count(), payload(), event_timestamp()}
+  @type processed_key :: {node_id(), event_timestamp()}
+
   @doc """
   Persists a raw telemetry event before cache aggregation.
   """
@@ -61,7 +69,11 @@ defmodule WCore.Telemetry do
 
   Returns the number of updated events.
   """
-  @spec mark_unprocessed_events_as_processed(String.t(), DateTime.t(), DateTime.t()) :: non_neg_integer()
+  @spec mark_unprocessed_events_as_processed(
+          String.t(),
+          DateTime.t(),
+          DateTime.t()
+        ) :: non_neg_integer()
   def mark_unprocessed_events_as_processed(machine_identifier, occurred_at, processed_at) do
     from(e in TelemetryEvent,
       where:
@@ -293,13 +305,13 @@ defmodule WCore.Telemetry do
   Returns the `{machine_identifier, occurred_at}` pairs that were persisted,
   so callers can mark corresponding telemetry events as processed.
   """
-  @spec upsert_node_metrics_batch([
-          {String.t(), String.t(), non_neg_integer(), map(), DateTime.t()}
-        ]) :: [{String.t(), DateTime.t()}]
+  @spec upsert_node_metrics_batch([cache_record()]) :: [processed_key()]
   def upsert_node_metrics_batch(records) when is_list(records) do
     machine_identifiers =
       records
-      |> Enum.map(fn {machine_identifier, _status, _count, _payload, _occurred_at} -> machine_identifier end)
+      |> Enum.map(fn {machine_identifier, _status, _count, _payload, _occurred_at} ->
+        machine_identifier
+      end)
       |> Enum.uniq()
 
     node_ids_by_machine_identifier =
@@ -342,7 +354,15 @@ defmodule WCore.Telemetry do
 
       _ ->
         Repo.insert_all(NodeMetrics, rows,
-          on_conflict: {:replace, [:status, :total_events_processed, :last_payload, :last_seen_at, :updated_at]},
+          on_conflict:
+            {:replace,
+             [
+               :status,
+               :total_events_processed,
+               :last_payload,
+               :last_seen_at,
+               :updated_at
+             ]},
           conflict_target: [:node_id]
         )
 
@@ -369,7 +389,6 @@ defmodule WCore.Telemetry do
     |> preload(:node_metric)
     |> Repo.all()
   end
-
 
   @doc """
   Gets a node by its machine identifier.

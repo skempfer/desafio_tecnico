@@ -48,6 +48,9 @@ defmodule WCore.Telemetry.Worker do
 
   @interval 5_000
 
+  @type state :: map()
+  @type processed_key :: {Cache.node_id(), Cache.event_timestamp()}
+
   @doc """
   Starts the Worker process and registers it under the module name.
   """
@@ -60,20 +63,29 @@ defmodule WCore.Telemetry.Worker do
   Initialises state and schedules the first `:flush` tick.
   """
   @impl true
-  @spec init(map()) :: {:ok, map()}
+  @spec init(term()) :: {:ok, state()}
   def init(_opts) do
     recover_unprocessed_events()
     schedule_work()
     {:ok, %{}}
   end
 
+  @spec recover_unprocessed_events() :: :ok
   defp recover_unprocessed_events do
     unprocessed = Telemetry.get_unprocessed_telemetry_events()
 
-    Enum.each(unprocessed, fn event ->
-      node = Telemetry.get_node_by_machine_identifier(event.machine_identifier)
+    Enum.each(unprocessed, &recover_event/1)
 
-      if node do
+    :ok
+  end
+
+  @spec recover_event(WCore.Telemetry.TelemetryEvent.t()) :: :ok
+  defp recover_event(event) do
+    case Telemetry.get_node_by_machine_identifier(event.machine_identifier) do
+      nil ->
+        :ok
+
+      node ->
         total_events_processed =
           case Telemetry.get_last_metric_by_node(node.id) do
             nil -> 1
@@ -88,8 +100,9 @@ defmodule WCore.Telemetry.Worker do
         })
 
         Telemetry.mark_telemetry_event_processed(event.id, DateTime.utc_now())
-      end
-    end)
+
+        :ok
+    end
   end
 
   @doc """
@@ -100,19 +113,22 @@ defmodule WCore.Telemetry.Worker do
   tick.
   """
   @impl true
-  @spec handle_info(:flush, map()) :: {:noreply, map()}
+  @spec handle_info(:flush, state()) :: {:noreply, state()}
   def handle_info(:flush, state) do
     records = Cache.get_all()
     processed_at = DateTime.utc_now() |> DateTime.truncate(:second)
 
     records
     |> Telemetry.upsert_node_metrics_batch()
-    |> Enum.each(fn {machine_identifier, occurred_at} ->
-      Telemetry.mark_unprocessed_events_as_processed(machine_identifier, occurred_at, processed_at)
-    end)
+    |> Enum.each(&mark_processed_key(&1, processed_at))
 
     schedule_work()
     {:noreply, state}
+  end
+
+  @spec mark_processed_key(processed_key(), DateTime.t()) :: non_neg_integer()
+  defp mark_processed_key({machine_identifier, occurred_at}, processed_at) do
+    Telemetry.mark_unprocessed_events_as_processed(machine_identifier, occurred_at, processed_at)
   end
 
   # Schedules a single :flush message after @interval milliseconds.

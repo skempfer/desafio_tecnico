@@ -28,6 +28,14 @@ defmodule WCore.Telemetry.Cache do
 
   @table :w_core_telemetry_cache
 
+  @type node_id :: String.t()
+  @type node_status :: String.t()
+  @type payload :: map()
+  @type event_count :: non_neg_integer()
+  @type event_timestamp :: DateTime.t()
+  @type record :: {node_id(), node_status(), event_count(), payload(), event_timestamp()}
+  @type value :: {node_status(), event_count(), payload(), event_timestamp()}
+
   @doc """
   Creates the ETS table and returns `{:ok, pid}`.
 
@@ -35,10 +43,16 @@ defmodule WCore.Telemetry.Cache do
   configured with `read_concurrency: true` and `write_concurrency: true`
   for efficient concurrent access.
   """
-  @spec start_link(term()) :: term()
+  @spec start_link(term()) :: {:ok, pid()}
   def start_link(_opts) do
     if :ets.whereis(@table) == :undefined do
-      :ets.new(@table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+      :ets.new(@table, [
+        :set,
+        :public,
+        :named_table,
+        read_concurrency: true,
+        write_concurrency: true
+      ])
     end
 
     {:ok, self()}
@@ -49,7 +63,7 @@ defmodule WCore.Telemetry.Cache do
 
   The process is started as a permanent worker with a 500 ms shutdown timeout.
   """
-  @spec child_spec(term()) :: term()
+  @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_opts) do
     %{
       id: __MODULE__,
@@ -70,12 +84,13 @@ defmodule WCore.Telemetry.Cache do
 
   Returns the update count in both cases (1 on insert, incremented on update).
   """
-  @spec put(term(), term(), term(), term()) :: non_neg_integer()
+  @spec put(node_id(), node_status(), payload(), event_timestamp()) :: event_count()
   def put(node_id, status, payload, timestamp) do
     case :ets.lookup(@table, node_id) do
       [] ->
         :ets.insert(@table, {node_id, status, 1, payload, timestamp})
         1
+
       [{_, _, _count, _, _}] ->
         new_count = :ets.update_counter(@table, node_id, {3, 1})
         :ets.update_element(@table, node_id, {2, status})
@@ -90,7 +105,7 @@ defmodule WCore.Telemetry.Cache do
 
   Returns `{status, count, payload, timestamp}` if found, or `nil` otherwise.
   """
-  @spec get(term()) :: term()
+  @spec get(node_id()) :: value() | nil
   def get(node_id) do
     case :ets.lookup(@table, node_id) do
       [] -> nil
@@ -103,7 +118,7 @@ defmodule WCore.Telemetry.Cache do
 
   Each element has the form `{node_id, status, count, payload, timestamp}`.
   """
-  @spec get_all() :: term()
+  @spec get_all() :: [record()]
   def get_all do
     :ets.tab2list(@table)
   end
@@ -113,7 +128,7 @@ defmodule WCore.Telemetry.Cache do
 
   No-op if the entry does not exist.
   """
-  @spec delete(term()) :: term()
+  @spec delete(node_id()) :: true
   def delete(node_id) do
     :ets.delete(@table, node_id)
   end
@@ -121,7 +136,7 @@ defmodule WCore.Telemetry.Cache do
   @doc """
   Removes all entries from the cache table without deleting the table itself.
   """
-  @spec clear() :: term()
+  @spec clear() :: true
   def clear do
     :ets.delete_all_objects(@table)
   end

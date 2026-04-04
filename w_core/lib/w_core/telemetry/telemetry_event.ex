@@ -9,6 +9,17 @@ defmodule WCore.Telemetry.TelemetryEvent do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: integer() | nil,
+          machine_identifier: String.t() | nil,
+          status: String.t() | nil,
+          payload: map() | nil,
+          occurred_at: DateTime.t() | nil,
+          processed_at: DateTime.t() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   schema "telemetry_events" do
     field :machine_identifier, :string
     field :status, :string
