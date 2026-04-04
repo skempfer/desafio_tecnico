@@ -20,6 +20,15 @@ defmodule WCore.Telemetry.TelemetryEvent do
           updated_at: DateTime.t() | nil
         }
 
+  @typedoc "Attributes accepted when creating or updating a telemetry event changeset."
+  @type attrs :: %{
+          optional(:machine_identifier) => String.t(),
+          optional(:status) => String.t(),
+          optional(:payload) => map(),
+          optional(:occurred_at) => DateTime.t(),
+          optional(:processed_at) => DateTime.t()
+        }
+
   schema "telemetry_events" do
     field :machine_identifier, :string
     field :status, :string
@@ -36,7 +45,7 @@ defmodule WCore.Telemetry.TelemetryEvent do
   Casts accepted attributes and validates the minimum required data needed to
   persist an incoming telemetry pulse in the durable event log.
   """
-  @spec changeset(term(), term()) :: term()
+  @spec changeset(t(), attrs()) :: Ecto.Changeset.t()
   def changeset(event, attrs) do
     event
     |> cast(attrs, [:machine_identifier, :status, :payload, :occurred_at, :processed_at])
