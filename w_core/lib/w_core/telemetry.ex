@@ -8,6 +8,70 @@ defmodule WCore.Telemetry do
   alias WCore.Repo
   alias WCore.Telemetry.Node
   alias WCore.Telemetry.NodeMetrics
+  alias WCore.Telemetry.TelemetryEvent
+
+  @doc """
+  Persists a raw telemetry event before cache aggregation.
+  """
+  @spec record_telemetry_event(String.t(), String.t(), map(), DateTime.t()) ::
+          {:ok, TelemetryEvent.t()} | {:error, Ecto.Changeset.t()}
+  def record_telemetry_event(machine_identifier, status, payload, occurred_at) do
+    %TelemetryEvent{}
+    |> TelemetryEvent.changeset(%{
+      machine_identifier: machine_identifier,
+      status: status,
+      payload: payload,
+      occurred_at: occurred_at
+    })
+    |> Repo.insert()
+  end
+
+  @doc """
+  Marks a telemetry event as processed.
+
+  Updates `processed_at` to record when the event was consumed by the
+  final persistence flow.
+  """
+  @spec mark_telemetry_event_processed(pos_integer(), DateTime.t()) ::
+          {:ok, TelemetryEvent.t()} | {:error, Ecto.Changeset.t()}
+  def mark_telemetry_event_processed(event_id, processed_at) do
+    event = Repo.get!(TelemetryEvent, event_id)
+
+    event
+    |> TelemetryEvent.changeset(%{processed_at: processed_at})
+    |> Repo.update()
+  end
+
+  @doc """
+  Lists telemetry events that are still unprocessed.
+
+  An event is considered pending when `processed_at` is `nil`.
+  """
+  @spec get_unprocessed_telemetry_events() :: [TelemetryEvent.t()]
+  def get_unprocessed_telemetry_events do
+    from(e in TelemetryEvent,
+      where: is_nil(e.processed_at),
+      order_by: [asc: e.occurred_at, asc: e.id]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Marks pending events as processed for a machine at a given timestamp.
+
+  Returns the number of updated events.
+  """
+  @spec mark_unprocessed_events_as_processed(String.t(), DateTime.t(), DateTime.t()) :: non_neg_integer()
+  def mark_unprocessed_events_as_processed(machine_identifier, occurred_at, processed_at) do
+    from(e in TelemetryEvent,
+      where:
+        e.machine_identifier == ^machine_identifier and
+          e.occurred_at == ^occurred_at and
+          is_nil(e.processed_at)
+    )
+    |> Repo.update_all(set: [processed_at: processed_at])
+    |> elem(0)
+  end
 
   @doc """
   Subscribes to scoped notifications about any node changes.
@@ -219,6 +283,72 @@ defmodule WCore.Telemetry do
         metric
         |> NodeMetrics.changeset(attrs)
         |> Repo.update()
+    end
+  end
+
+  @doc """
+  Performs a batch upsert of metrics coming from ETS cache records.
+
+  Only records whose machine identifier matches an existing node are persisted.
+  Returns the `{machine_identifier, occurred_at}` pairs that were persisted,
+  so callers can mark corresponding telemetry events as processed.
+  """
+  @spec upsert_node_metrics_batch([
+          {String.t(), String.t(), non_neg_integer(), map(), DateTime.t()}
+        ]) :: [{String.t(), DateTime.t()}]
+  def upsert_node_metrics_batch(records) when is_list(records) do
+    machine_identifiers =
+      records
+      |> Enum.map(fn {machine_identifier, _status, _count, _payload, _occurred_at} -> machine_identifier end)
+      |> Enum.uniq()
+
+    node_ids_by_machine_identifier =
+      from(n in Node,
+        where: n.machine_identifier in ^machine_identifiers,
+        select: {n.machine_identifier, n.id}
+      )
+      |> Repo.all()
+      |> Map.new()
+
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    {rows, persisted_keys} =
+      Enum.reduce(records, {[], []}, fn
+        {machine_identifier, status, count, payload, occurred_at}, {rows_acc, keys_acc} ->
+          case Map.fetch(node_ids_by_machine_identifier, machine_identifier) do
+            {:ok, node_id} ->
+              occurred_at = DateTime.truncate(occurred_at, :second)
+
+              row = %{
+                node_id: node_id,
+                status: status,
+                total_events_processed: count,
+                last_payload: payload,
+                last_seen_at: occurred_at,
+                inserted_at: now,
+                updated_at: now
+              }
+
+              {[row | rows_acc], [{machine_identifier, occurred_at} | keys_acc]}
+
+            :error ->
+              {rows_acc, keys_acc}
+          end
+      end)
+
+    case rows do
+      [] ->
+        []
+
+      _ ->
+        Repo.insert_all(NodeMetrics, rows,
+          on_conflict: {:replace, [:status, :total_events_processed, :last_payload, :last_seen_at, :updated_at]},
+          conflict_target: [:node_id]
+        )
+
+        persisted_keys
+        |> Enum.reverse()
+        |> Enum.uniq()
     end
   end
 

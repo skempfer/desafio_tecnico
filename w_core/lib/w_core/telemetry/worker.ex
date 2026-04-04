@@ -43,9 +43,8 @@ defmodule WCore.Telemetry.Worker do
 
   use GenServer
 
-  alias WCore.Repo
   alias WCore.Telemetry
-  alias WCore.Telemetry.{Cache, Node}
+  alias WCore.Telemetry.Cache
 
   @interval 5_000
 
@@ -53,8 +52,8 @@ defmodule WCore.Telemetry.Worker do
   Starts the Worker process and registers it under the module name.
   """
   @spec start_link(term()) :: GenServer.on_start()
-  def start_link(_opts) do
-    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   @doc """
@@ -62,38 +61,54 @@ defmodule WCore.Telemetry.Worker do
   """
   @impl true
   @spec init(map()) :: {:ok, map()}
-  def init(state) do
+  def init(_opts) do
+    recover_unprocessed_events()
     schedule_work()
-    {:ok, state}
+    {:ok, %{}}
+  end
+
+  defp recover_unprocessed_events do
+    unprocessed = Telemetry.get_unprocessed_telemetry_events()
+
+    Enum.each(unprocessed, fn event ->
+      node = Telemetry.get_node_by_machine_identifier(event.machine_identifier)
+
+      if node do
+        total_events_processed =
+          case Telemetry.get_last_metric_by_node(node.id) do
+            nil -> 1
+            metric -> metric.total_events_processed + 1
+          end
+
+        Telemetry.upsert_node_metric(node, %{
+          status: event.status,
+          total_events_processed: total_events_processed,
+          last_payload: event.payload,
+          last_seen_at: event.occurred_at
+        })
+
+        Telemetry.mark_telemetry_event_processed(event.id, DateTime.utc_now())
+      end
+    end)
   end
 
   @doc """
   Handles the periodic `:flush` message.
 
-  Reads all entries from the ETS cache, persists each one via
-  `WCore.Telemetry.upsert_node_metric/2`, then re-schedules the next tick.
-  Nodes that no longer exist in the database emit a warning and are skipped.
+  Reads all entries from ETS cache and persists metrics in batch via
+  `WCore.Telemetry.upsert_node_metrics_batch/1`, then re-schedules the next
+  tick.
   """
   @impl true
   @spec handle_info(:flush, map()) :: {:noreply, map()}
   def handle_info(:flush, state) do
     records = Cache.get_all()
+    processed_at = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    Enum.each(records, fn {node_id, status, event_count, payload, timestamp} ->
-      node = Repo.get_by(Node, machine_identifier: node_id)
-
-      if node do
-        attrs = %{
-          status: status,
-          total_events_processed: event_count,
-          last_payload: payload,
-          last_seen_at: timestamp
-        }
-
-        Telemetry.upsert_node_metric(node, attrs)
-      else
-        IO.warn("Node with machine_identifier #{node_id} not found in the database")
-      end
+    records
+    |> Telemetry.upsert_node_metrics_batch()
+    |> Enum.each(fn {machine_identifier, occurred_at} ->
+      Telemetry.mark_unprocessed_events_as_processed(machine_identifier, occurred_at, processed_at)
     end)
 
     schedule_work()

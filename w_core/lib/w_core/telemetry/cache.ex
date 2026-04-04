@@ -68,13 +68,14 @@ defmodule WCore.Telemetry.Cache do
     and `timestamp` in-place using `:ets.update_counter/3` and
     `:ets.update_element/3`.
 
-  Returns the new update count on update, or `:true` on insert.
+  Returns the update count in both cases (1 on insert, incremented on update).
   """
-  @spec put(term(), term(), term(), term()) :: term()
+  @spec put(term(), term(), term(), term()) :: non_neg_integer()
   def put(node_id, status, payload, timestamp) do
     case :ets.lookup(@table, node_id) do
       [] ->
         :ets.insert(@table, {node_id, status, 1, payload, timestamp})
+        1
       [{_, _, _count, _, _}] ->
         new_count = :ets.update_counter(@table, node_id, {3, 1})
         :ets.update_element(@table, node_id, {2, status})

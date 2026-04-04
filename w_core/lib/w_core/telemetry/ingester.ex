@@ -10,7 +10,40 @@ defmodule WCore.Telemetry.Ingester do
 
   use GenServer
 
+  alias WCore.Telemetry
   alias WCore.Telemetry.Cache
+
+  @doc """
+  Persists the raw event and then updates the in-memory cache.
+
+  Returns `{:ok, count}` when persistence and cache update succeed, or
+  `{:error, reason}` when persistence fails.
+  """
+  @spec ingest_event(term(), term(), term(), term()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def ingest_event(node_id, status, payload, timestamp) do
+    GenServer.call(__MODULE__, {:ingest, node_id, status, payload, timestamp})
+  end
+
+ @impl true
+  @spec handle_call({:ingest, term(), term(), term(), term()}, GenServer.from(), map()) ::
+          {:reply, {:ok, non_neg_integer()} | {:error, term()}, map()}
+  def handle_call({:ingest, node_id, status, payload, timestamp}, _from, state) do
+    case Telemetry.record_telemetry_event(node_id, status, payload, timestamp) do
+      {:ok, _event} ->
+        event_count = Cache.put(node_id, status, payload, timestamp)
+
+        Phoenix.PubSub.broadcast(
+          WCore.PubSub,
+          "telemetry: #{node_id}",
+          {:metric_update, node_id, status, event_count, payload, timestamp}
+        )
+
+        {:reply, {:ok, event_count}, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
 
   @doc """
   Starts the ingester process.
@@ -22,36 +55,11 @@ defmodule WCore.Telemetry.Ingester do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
   end
 
-  @doc """
-  Enqueues a telemetry event for asynchronous ingestion.
-
-  The event is processed via `handle_cast/2`, stored in cache and then
-  broadcast to `"telemetry: \#{node_id}"`.
-  """
-  @spec ingest_event(term(), term(), term(), term()) :: :ok
-  def ingest_event(node_id, status, payload, timestamp) do
-    GenServer.cast(__MODULE__, {:ingest, node_id, status, payload, timestamp})
-  end
-
   @impl true
   @spec init(map()) :: {:ok, map()}
   def init(state) do
     Cache.start_link([])
     {:ok, state}
-  end
-
-  @impl true
-  @spec handle_cast({:ingest, term(), term(), term(), term()}, map()) :: {:noreply, map()}
-  def handle_cast({:ingest, node_id, status, payload, timestamp}, state) do
-    event_count = Cache.put(node_id, status, payload, timestamp)
-
-    Phoenix.PubSub.broadcast(
-      WCore.PubSub,
-      "telemetry: #{node_id}",
-      {:metric_update, node_id, status, event_count, payload, timestamp}
-    )
-
-    {:noreply, state}
   end
 
 end

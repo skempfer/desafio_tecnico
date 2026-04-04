@@ -28,10 +28,9 @@ defmodule WCore.Application do
       {DNSCluster, query: Application.get_env(:w_core, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: WCore.PubSub},
       WCoreWeb.Endpoint,
-      WCore.Repo,
-     {WCore.Telemetry.Cache, []},
-     {WCore.Telemetry.Ingester, []},
-     {WCore.Telemetry.Worker, []}
+      {WCore.Telemetry.Cache, []},
+      {WCore.Telemetry.Ingester, []},
+      {WCore.Telemetry.Worker, []}
     ]
 
     opts = [strategy: :one_for_one, name: WCore.Supervisor]
