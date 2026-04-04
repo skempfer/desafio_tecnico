@@ -9,14 +9,73 @@ defmodule WCore.Telemetry do
   alias WCore.Telemetry.Node
   alias WCore.Telemetry.NodeMetrics
   alias WCore.Telemetry.TelemetryEvent
+  alias WCore.Telemetry.Cache
 
+  @typedoc "Unique machine identifier used as the cache and routing key for telemetry nodes."
   @type node_id :: String.t()
+
+  @typedoc "Node status label received from telemetry input, such as online/offline/fault."
   @type node_status :: String.t()
+
+  @typedoc "Raw telemetry payload map received from the edge device."
   @type payload :: map()
+
+  @typedoc "Monotonic count of events processed for a node."
   @type event_count :: non_neg_integer()
+
+  @typedoc "Timestamp representing when a telemetry event occurred."
   @type event_timestamp :: DateTime.t()
+
+  @typedoc "Normalized cache tuple used in batch upsert operations."
   @type cache_record :: {node_id(), node_status(), event_count(), payload(), event_timestamp()}
+
+  @typedoc "Composite identifier used to mark persisted events as processed."
   @type processed_key :: {node_id(), event_timestamp()}
+
+  @doc """
+  Lists scoped nodes enriched with hot telemetry state from ETS.
+  """
+  @spec list_nodes_with_hot_state(Scope.t()) :: [map()]
+  def list_nodes_with_hot_state(%Scope{} = scope) do
+    list_nodes(scope)
+    |> Enum.map(&to_hot_row/1)
+  end
+
+  @doc """
+  Gets one scoped node enriched with hot telemetry state, by machine identifier.
+  """
+  @spec get_node_with_hot_state(Scope.t(), String.t()) :: map() | nil
+  def get_node_with_hot_state(%Scope{} = scope, machine_identifier) do
+    case Repo.get_by(Node, user_id: scope.user.id, machine_identifier: machine_identifier) do
+      nil -> nil
+      node -> to_hot_row(node)
+    end
+  end
+
+  defp to_hot_row(node) do
+    case Cache.get(node.machine_identifier) do
+      {status, count, payload, timestamp} ->
+        %{
+          machine_identifier: node.machine_identifier,
+          location: node.location,
+          status: status,
+          total_events_processed: count,
+          last_payload: payload,
+          last_seen_at: timestamp
+        }
+
+      nil ->
+        %{
+          machine_identifier: node.machine_identifier,
+          location: node.location,
+          status: "unknown",
+          total_events_processed: 0,
+          last_payload: %{},
+          last_seen_at: nil
+        }
+    end
+
+  end
 
   @doc """
   Persists a raw telemetry event before cache aggregation.

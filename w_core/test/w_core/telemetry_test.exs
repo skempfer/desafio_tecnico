@@ -90,4 +90,34 @@ defmodule WCore.TelemetryTest do
       assert %Ecto.Changeset{} = Telemetry.change_node(scope, node)
     end
   end
+
+  describe "hot state" do
+    import WCore.AccountsFixtures, only: [user_scope_fixture: 0]
+    import WCore.TelemetryFixtures
+
+    test "list_nodes_with_hot_state/1 returns fallback when ETS is empty" do
+      scope = user_scope_fixture()
+      node = node_fixture(scope, %{machine_identifier: "sensor-fallback"})
+
+      [row] = Telemetry.list_nodes_with_hot_state(scope)
+      assert row.machine_identifier == node.machine_identifier
+      assert row.status == "unknown"
+      assert row.total_events_processed == 0
+      assert row.last_seen_at == nil
+    end
+
+    test "list_nodes_with_hot_state/1 returns ETS values when present" do
+      scope = user_scope_fixture()
+      node = node_fixture(scope, %{machine_identifier: "sensor-hot"})
+      ts = ~U[2026-04-04 12:00:00Z]
+
+      WCore.Telemetry.Cache.put(node.machine_identifier, "online", %{temp: 42}, ts)
+
+      [row] = Telemetry.list_nodes_with_hot_state(scope)
+      assert row.machine_identifier == "sensor-hot"
+      assert row.status == "online"
+      assert row.total_events_processed == 1
+      assert row.last_seen_at == ts
+    end
+  end
 end
