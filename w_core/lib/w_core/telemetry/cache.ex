@@ -37,7 +37,10 @@ defmodule WCore.Telemetry.Cache do
   """
   @spec start_link(term()) :: term()
   def start_link(_opts) do
-    :ets.new(@table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+    if :ets.whereis(@table) == :undefined do
+      :ets.new(@table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+    end
+
     {:ok, self()}
   end
 
@@ -72,7 +75,7 @@ defmodule WCore.Telemetry.Cache do
     case :ets.lookup(@table, node_id) do
       [] ->
         :ets.insert(@table, {node_id, status, 1, payload, timestamp})
-      [{_, _, count, _, _}] ->
+      [{_, _, _count, _, _}] ->
         new_count = :ets.update_counter(@table, node_id, {3, 1})
         :ets.update_element(@table, node_id, {2, status})
         :ets.update_element(@table, node_id, {4, payload})
