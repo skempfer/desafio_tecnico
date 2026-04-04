@@ -209,11 +209,12 @@ defmodule WCore.Telemetry do
   """
   @spec upsert_node_metric(term(), term()) :: term()
   def upsert_node_metric(%Node{} = node, attrs) do
-    case get_last_metric_by_node(node.id) do
+    case Repo.get_by(NodeMetrics, node_id: node.id) do
       nil ->
         %NodeMetrics{node_id: node.id}
         |> NodeMetrics.changeset(attrs)
         |> Repo.insert()
+
       metric ->
         metric
         |> NodeMetrics.changeset(attrs)
@@ -234,8 +235,27 @@ defmodule WCore.Telemetry do
   """
   @spec list_node_with_metrics() :: term()
   def list_node_with_metrics do
-    query = from n in Node, left_join: m in NodeMetrics, on: n.id == m.node_id,
-      preload: [:node_metric]
-    Repo.all(query)
+    Node
+    |> preload(:node_metric)
+    |> Repo.all()
+  end
+
+
+  @doc """
+  Gets a node by its machine identifier.
+
+  Returns the node if found, or `nil` if no node exists with the given machine identifier.
+
+  ## Examples
+
+      iex> get_node_by_machine_identifier("machine_123")
+      %Node{}
+
+      iex> get_node_by_machine_identifier("nonexistent_machine")
+      nil
+  """
+  @spec get_node_by_machine_identifier(String.t()) :: Node.t() | nil
+  def get_node_by_machine_identifier(machine_id) do
+    Repo.get_by(Node, machine_identifier: machine_id)
   end
 end

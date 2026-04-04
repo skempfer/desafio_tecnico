@@ -13,6 +13,8 @@ defmodule WCore.Telemetry.Node do
     field :location, :string
     field :user_id, :id
 
+    has_one :node_metric, WCore.Telemetry.NodeMetrics
+
     timestamps(type: :utc_datetime)
   end
 
