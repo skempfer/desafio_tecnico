@@ -22,6 +22,7 @@ defmodule WCore.Accounts do
       nil
 
   """
+  @spec get_user_by_email(term()) :: term()
   def get_user_by_email(email) when is_binary(email) do
     Repo.get_by(User, email: email)
   end
@@ -58,6 +59,7 @@ defmodule WCore.Accounts do
       ** (Ecto.NoResultsError)
 
   """
+  @spec get_user!(term()) :: term()
   def get_user!(id), do: Repo.get!(User, id)
 
   ## User registration
@@ -74,6 +76,7 @@ defmodule WCore.Accounts do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec register_user(term()) :: term()
   def register_user(attrs) do
     %User{}
     |> User.email_changeset(attrs)
@@ -88,6 +91,7 @@ defmodule WCore.Accounts do
   The user is in sudo mode when the last authentication was done no further
   than 20 minutes ago. The limit can be given as second argument in minutes.
   """
+  @spec sudo_mode?(term(), term()) :: term()
   def sudo_mode?(user, minutes \\ -20)
 
   def sudo_mode?(%User{authenticated_at: ts}, minutes) when is_struct(ts, DateTime) do
@@ -107,6 +111,7 @@ defmodule WCore.Accounts do
       %Ecto.Changeset{data: %User{}}
 
   """
+  @spec change_user_email(term(), term(), term()) :: term()
   def change_user_email(user, attrs \\ %{}, opts \\ []) do
     User.email_changeset(user, attrs, opts)
   end
@@ -116,6 +121,7 @@ defmodule WCore.Accounts do
 
   If the token matches, the user email is updated and the token is deleted.
   """
+  @spec update_user_email(term(), term()) :: term()
   def update_user_email(user, token) do
     context = "change:#{user.email}"
 
@@ -143,6 +149,7 @@ defmodule WCore.Accounts do
       %Ecto.Changeset{data: %User{}}
 
   """
+  @spec change_user_password(term(), term(), term()) :: term()
   def change_user_password(user, attrs \\ %{}, opts \\ []) do
     User.password_changeset(user, attrs, opts)
   end
@@ -161,6 +168,7 @@ defmodule WCore.Accounts do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec update_user_password(term(), term()) :: term()
   def update_user_password(user, attrs) do
     user
     |> User.password_changeset(attrs)
@@ -172,6 +180,7 @@ defmodule WCore.Accounts do
   @doc """
   Generates a session token.
   """
+  @spec generate_user_session_token(term()) :: term()
   def generate_user_session_token(user) do
     {token, user_token} = UserToken.build_session_token(user)
     Repo.insert!(user_token)
@@ -183,6 +192,7 @@ defmodule WCore.Accounts do
 
   If the token is valid `{user, token_inserted_at}` is returned, otherwise `nil` is returned.
   """
+  @spec get_user_by_session_token(term()) :: term()
   def get_user_by_session_token(token) do
     {:ok, query} = UserToken.verify_session_token_query(token)
     Repo.one(query)
@@ -191,6 +201,7 @@ defmodule WCore.Accounts do
   @doc """
   Gets the user with the given magic link token.
   """
+  @spec get_user_by_magic_link_token(term()) :: term()
   def get_user_by_magic_link_token(token) do
     with {:ok, query} <- UserToken.verify_magic_link_token_query(token),
          {user, _token} <- Repo.one(query) do
@@ -218,6 +229,7 @@ defmodule WCore.Accounts do
      source of security pitfalls. See the "Mixing magic link and password registration" section of
      `mix help phx.gen.auth`.
   """
+  @spec login_user_by_magic_link(term()) :: term()
   def login_user_by_magic_link(token) do
     {:ok, query} = UserToken.verify_magic_link_token_query(token)
 
@@ -276,6 +288,7 @@ defmodule WCore.Accounts do
   @doc """
   Deletes the signed token with the given context.
   """
+  @spec delete_user_session_token(term()) :: term()
   def delete_user_session_token(token) do
     Repo.delete_all(from(UserToken, where: [token: ^token, context: "session"]))
     :ok

@@ -25,6 +25,7 @@ defmodule WCore.Accounts.Scope do
 
   Returns nil if no user is given.
   """
+  @spec for_user(term()) :: term()
   def for_user(%User{} = user) do
     %__MODULE__{user: user}
   end

@@ -18,6 +18,7 @@ defmodule WCore.Application do
   Initializes repository, migration runner, PubSub and HTTP endpoint.
   """
   @impl true
+  @spec start(term(), term()) :: term()
   def start(_type, _args) do
     children = [
       WCoreWeb.Telemetry,
@@ -37,6 +38,7 @@ defmodule WCore.Application do
   Handles endpoint configuration updates during hot code upgrades.
   """
   @impl true
+  @spec config_change(term(), term(), term()) :: term()
   def config_change(changed, _new, removed) do
     WCoreWeb.Endpoint.config_change(changed, removed)
     :ok

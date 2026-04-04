@@ -24,6 +24,7 @@ defmodule WCore.Telemetry.NodeMetrics do
   Validates required fields, checks node foreign key integrity, and enforces
   one metrics record per node through `unique_node_metrics_index`.
   """
+  @spec changeset(term(), term()) :: term()
   def changeset(metrics, attrs) do
     metrics
     |> cast(attrs, [:node_id, :status, :total_events_processed, :last_payload, :last_seen_at])

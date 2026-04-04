@@ -4,6 +4,7 @@ defmodule WCoreWeb.UserLive.Login do
   alias WCore.Accounts
 
   @impl true
+  @spec render(term()) :: term()
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -96,6 +97,7 @@ defmodule WCoreWeb.UserLive.Login do
   end
 
   @impl true
+  @spec mount(term(), term(), term()) :: term()
   def mount(_params, _session, socket) do
     email =
       Phoenix.Flash.get(socket.assigns.flash, :email) ||
@@ -107,6 +109,7 @@ defmodule WCoreWeb.UserLive.Login do
   end
 
   @impl true
+  @spec handle_event(term(), term(), term()) :: term()
   def handle_event("submit_password", _params, socket) do
     {:noreply, assign(socket, :trigger_submit, true)}
   end

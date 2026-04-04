@@ -6,6 +6,7 @@ defmodule WCoreWeb.UserLive.Settings do
   alias WCore.Accounts
 
   @impl true
+  @spec render(term()) :: term()
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -70,6 +71,7 @@ defmodule WCoreWeb.UserLive.Settings do
   end
 
   @impl true
+  @spec mount(term(), term(), term()) :: term()
   def mount(%{"token" => token}, _session, socket) do
     socket =
       case Accounts.update_user_email(socket.assigns.current_scope.user, token) do
@@ -99,6 +101,7 @@ defmodule WCoreWeb.UserLive.Settings do
   end
 
   @impl true
+  @spec handle_event(term(), term(), term()) :: term()
   def handle_event("validate_email", params, socket) do
     %{"user" => user_params} = params
 

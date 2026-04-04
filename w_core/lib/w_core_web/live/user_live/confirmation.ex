@@ -4,6 +4,7 @@ defmodule WCoreWeb.UserLive.Confirmation do
   alias WCore.Accounts
 
   @impl true
+  @spec render(term()) :: term()
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -73,6 +74,7 @@ defmodule WCoreWeb.UserLive.Confirmation do
   end
 
   @impl true
+  @spec mount(term(), term(), term()) :: term()
   def mount(%{"token" => token}, _session, socket) do
     if user = Accounts.get_user_by_magic_link_token(token) do
       form = to_form(%{"token" => token}, as: "user")
@@ -88,6 +90,7 @@ defmodule WCoreWeb.UserLive.Confirmation do
   end
 
   @impl true
+  @spec handle_event(term(), term(), term()) :: term()
   def handle_event("submit", %{"user" => params}, socket) do
     {:noreply, assign(socket, form: to_form(params, as: "user"), trigger_submit: true)}
   end

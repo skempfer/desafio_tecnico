@@ -2,11 +2,13 @@ defmodule WCoreWeb.Telemetry do
   use Supervisor
   import Telemetry.Metrics
 
+  @spec start_link(term()) :: term()
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
   end
 
   @impl true
+  @spec init(term()) :: term()
   def init(_arg) do
     children = [
       # Telemetry poller will execute the given period measurements
@@ -19,6 +21,7 @@ defmodule WCoreWeb.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  @spec metrics() :: term()
   def metrics do
     [
       # Phoenix Metrics

@@ -35,6 +35,7 @@ defmodule WCore.Telemetry.Node do
   ## Returns
   - An `%Ecto.Changeset{}` ready for insertion or persistence.
   """
+  @spec changeset(term(), term(), term()) :: term()
   def changeset(node, attrs, user_scope) do
     node
     |> cast(attrs, [:machine_identifier, :location])

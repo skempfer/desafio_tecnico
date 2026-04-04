@@ -19,6 +19,7 @@ defmodule WCore.Telemetry do
     * {:deleted, %Node{}}
 
   """
+  @spec subscribe_nodes(term()) :: term()
   def subscribe_nodes(%Scope{} = scope) do
     key = scope.user.id
 
@@ -40,6 +41,7 @@ defmodule WCore.Telemetry do
       [%Node{}, ...]
 
   """
+  @spec list_nodes(term()) :: term()
   def list_nodes(%Scope{} = scope) do
     Repo.all_by(Node, user_id: scope.user.id)
   end
@@ -58,6 +60,7 @@ defmodule WCore.Telemetry do
       ** (Ecto.NoResultsError)
 
   """
+  @spec get_node!(term(), term()) :: term()
   def get_node!(%Scope{} = scope, id) do
     Repo.get_by!(Node, id: id, user_id: scope.user.id)
   end
@@ -74,6 +77,7 @@ defmodule WCore.Telemetry do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec create_node(term(), term()) :: term()
   def create_node(%Scope{} = scope, attrs) do
     with {:ok, node = %Node{}} <-
            %Node{}
@@ -96,6 +100,7 @@ defmodule WCore.Telemetry do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec update_node(term(), term(), term()) :: term()
   def update_node(%Scope{} = scope, %Node{} = node, attrs) do
     true = node.user_id == scope.user.id
 
@@ -120,6 +125,7 @@ defmodule WCore.Telemetry do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec delete_node(term(), term()) :: term()
   def delete_node(%Scope{} = scope, %Node{} = node) do
     true = node.user_id == scope.user.id
 
@@ -139,6 +145,7 @@ defmodule WCore.Telemetry do
       %Ecto.Changeset{data: %Node{}}
 
   """
+  @spec change_node(term(), term(), term()) :: term()
   def change_node(%Scope{} = scope, %Node{} = node, attrs \\ %{}) do
     true = node.user_id == scope.user.id
 
@@ -158,6 +165,7 @@ defmodule WCore.Telemetry do
       iex> get_node_metric!(456)
       ** (Ecto.NoResultsError)
   """
+  @spec get_node_metric!(term()) :: term()
   def get_node_metric!(id), do: Repo.get!(NodeMetrics, id)
 
   @doc """
@@ -174,6 +182,7 @@ defmodule WCore.Telemetry do
       iex> get_last_metric_by_node(nonexistent_node_id)
       nil
   """
+  @spec get_last_metric_by_node(term()) :: term()
   def get_last_metric_by_node(node_id) do
     query = from m in NodeMetrics, where: m.node_id == ^node_id, order_by: [desc: m.inserted_at], limit: 1
     Repo.one(query)
@@ -193,6 +202,7 @@ defmodule WCore.Telemetry do
       iex> upsert_node_metric(node, %{invalid_field: "value"})
       {:error, %Ecto.Changeset{}}
   """
+  @spec upsert_node_metric(term(), term()) :: term()
   def upsert_node_metric(%Node{} = node, attrs) do
     case get_last_metric_by_node(node.id) do
       nil ->
@@ -217,6 +227,7 @@ defmodule WCore.Telemetry do
       iex> list_node_with_metrics()
       [%Node{node_metric: %NodeMetrics{}}, %Node{node_metric: nil}, ...]
   """
+  @spec list_node_with_metrics() :: term()
   def list_node_with_metrics do
     query = from n in Node, left_join: m in NodeMetrics, on: n.id == m.node_id,
       preload: [:node_metric]
