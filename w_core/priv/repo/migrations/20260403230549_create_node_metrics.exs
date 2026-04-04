@@ -1,6 +1,16 @@
 defmodule WCore.Repo.Migrations.CreateNodeMetrics do
   use Ecto.Migration
 
+  @moduledoc """
+  Creates the `node_metrics` table used to store each node's latest telemetry
+  state.
+
+  The unique index on `node_id` enforces one metrics row per node.
+  """
+
+  @doc """
+  Creates the `node_metrics` table and indexes for lookup and recency queries.
+  """
   def change do
     create table(:node_metrics) do
       add :node_id, references(:nodes, on_delete: :delete_all), null: false

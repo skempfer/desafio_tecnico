@@ -148,7 +148,7 @@ defmodule WCore.Telemetry do
   @doc """
   Gets a single node metric by ID.
 
-  Raises `Ecto.NoResultsError` if the NodeMetric does not exist.
+  Raises `Ecto.NoResultsError` if the node metric does not exist.
 
   ## Examples
 
@@ -163,7 +163,7 @@ defmodule WCore.Telemetry do
   @doc """
   Gets the last (most recent) metric for a node.
 
-  Returns the most recent `NodeMetric` sorted by `inserted_at` in descending order,
+  Returns the most recent `NodeMetrics` sorted by `inserted_at` in descending order,
   or `nil` if no metrics exist for the node.
 
   ## Examples

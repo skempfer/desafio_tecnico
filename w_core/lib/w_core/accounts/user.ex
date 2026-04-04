@@ -1,4 +1,11 @@
 defmodule WCore.Accounts.User do
+  @moduledoc """
+  User schema and credential-related changesets.
+
+  Defines email/password validation and password verification helpers used by
+  the Accounts context.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -82,10 +89,6 @@ defmodule WCore.Accounts.User do
     changeset
     |> validate_required([:password])
     |> validate_length(:password, min: 12, max: 72)
-    # Examples of additional password validation:
-    # |> validate_format(:password, ~r/[a-z]/, message: "at least one lower case character")
-    # |> validate_format(:password, ~r/[A-Z]/, message: "at least one upper case character")
-    # |> validate_format(:password, ~r/[!?@#$%^&*_0-9]/, message: "at least one digit or punctuation character")
     |> maybe_hash_password(opts)
   end
 
@@ -95,8 +98,7 @@ defmodule WCore.Accounts.User do
 
     if hash_password? && password && changeset.valid? do
       changeset
-      # Hashing could be done with `Ecto.Changeset.prepare_changes/2`, but that
-      # would keep the database transaction open longer and hurt performance.
+      # Hash outside DB transactions to reduce lock time.
       |> put_change(:hashed_password, Pbkdf2.hash_pwd_salt(password))
       |> delete_change(:password)
     else

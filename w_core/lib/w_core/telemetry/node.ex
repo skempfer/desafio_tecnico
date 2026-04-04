@@ -1,4 +1,10 @@
 defmodule WCore.Telemetry.Node do
+  @moduledoc """
+  Schema for registered telemetry nodes.
+
+  A node represents a monitored device owned by a user.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -11,20 +17,20 @@ defmodule WCore.Telemetry.Node do
   end
 
   @doc """
-  Builds a changeset for a Telemetry Node within a user_scope context.
+  Builds a changeset for a telemetry node within a user scope.
 
-  this function enforces:
+  This function enforces:
   - Required fields: `machine_identifier` and `location`
   - Uniqueness of `machine_identifier` (per system)
-  - Automatic association of the node with the current user from the `user_scope`
+  - Automatic association of the node with the authenticated user in `user_scope`
 
-  It should be used whenever creating or updating a node thet is bound to a specific user,
-  ensuring consistency and preventing croos-user data leakage.
+  It should be used whenever creating or updating a node bound to a specific
+  user, ensuring consistency and preventing cross-user data leakage.
 
   ## Parameters
-   * `node` - the `%Node{}` struct being created os updated
-    * `attrs` - incoming attributes for casting
-    * `user_scope` - the struct containing the authenticated user context,
+  - `node` - `%Node{}` being created or updated
+  - `attrs` - incoming attributes for casting
+  - `user_scope` - authenticated user context used to set `user_id`
 
   ## Returns
   - An `%Ecto.Changeset{}` ready for insertion or persistence.

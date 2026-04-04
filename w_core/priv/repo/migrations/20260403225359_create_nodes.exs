@@ -1,6 +1,16 @@
 defmodule WCore.Repo.Migrations.CreateNodes do
   use Ecto.Migration
 
+  @moduledoc """
+  Creates the `nodes` table used as the static registry of monitored devices.
+
+  Each node belongs to a user and is uniquely identified by
+  `machine_identifier`.
+  """
+
+  @doc """
+  Creates the `nodes` table and its ownership/uniqueness indexes.
+  """
   def change do
     create table(:nodes) do
       add :machine_identifier, :string

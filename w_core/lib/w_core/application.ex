@@ -1,10 +1,22 @@
 defmodule WCore.Application do
-  # See https://hexdocs.pm/elixir/Application.html
-  # for more information on OTP Applications
-  @moduledoc false
+  @moduledoc """
+  OTP application entrypoint for WCore.
+
+  Starts and supervises the core runtime services:
+
+  - telemetry and endpoint supervision
+  - database repository
+  - automatic migration runner for non-release environments
+  - DNS clustering and PubSub
+  """
 
   use Application
 
+  @doc """
+  Starts the WCore supervision tree.
+
+  Initializes repository, migration runner, PubSub and HTTP endpoint.
+  """
   @impl true
   def start(_type, _args) do
     children = [
@@ -14,20 +26,16 @@ defmodule WCore.Application do
        repos: Application.fetch_env!(:w_core, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:w_core, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: WCore.PubSub},
-      # Start a worker by calling: WCore.Worker.start_link(arg)
-      # {WCore.Worker, arg},
-      # Start to serve requests, typically the last entry
       WCoreWeb.Endpoint
     ]
 
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
     opts = [strategy: :one_for_one, name: WCore.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
-  # Tell Phoenix to update the endpoint configuration
-  # whenever the application is updated.
+  @doc """
+  Handles endpoint configuration updates during hot code upgrades.
+  """
   @impl true
   def config_change(changed, _new, removed) do
     WCoreWeb.Endpoint.config_change(changed, removed)
@@ -35,7 +43,7 @@ defmodule WCore.Application do
   end
 
   defp skip_migrations?() do
-    # By default, sqlite migrations are run when using a release
+    # Run migrations automatically outside releases.
     System.get_env("RELEASE_NAME") == nil
   end
 end

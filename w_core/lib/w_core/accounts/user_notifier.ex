@@ -1,4 +1,10 @@
 defmodule WCore.Accounts.UserNotifier do
+  @moduledoc """
+  Email notification helpers for account-related flows.
+
+  Delivers messages for login and email update/confirmation instructions.
+  """
+
   import Swoosh.Email
 
   alias WCore.Mailer
