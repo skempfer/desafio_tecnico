@@ -11,6 +11,10 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
   import Phoenix.LiveViewTest
   import WCore.AccountsFixtures
 
+  alias WCore.Accounts.Scope
+  alias WCore.Telemetry
+  alias WCore.Telemetry.Ingester
+
   test "redirects unauthenticated user", %{conn: conn} do
     assert {:error, {:redirect, %{to: path, flash: flash}}} = live(conn, ~p"/control-room")
     assert path == ~p"/users/log-in"
@@ -26,5 +30,27 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     assert html =~ "Control Room"
     assert html =~ "Real-time machine heartbeat overview"
     assert html =~ "Machine"
+  end
+
+  test "updates node status and counter after ingest event", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    assert {:ok, _node} =
+             Telemetry.create_node(scope, %{machine_identifier: "sensor-live", location: "lab"})
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    timestamp = ~U[2024-06-05 12:00:00Z]
+    assert {:ok, 1} = Ingester.ingest_event("sensor-live", "degraded", %{temp: 31}, timestamp)
+
+    Process.sleep(80)
+
+    html = render(lv)
+    assert html =~ "degraded"
+    assert html =~ "<td>1</td>"
   end
 end

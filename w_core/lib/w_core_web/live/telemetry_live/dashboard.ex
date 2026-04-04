@@ -9,23 +9,32 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   use WCoreWeb, :live_view
 
   alias WCore.Telemetry
+  alias MapSet
+
+  @refresh_delay_ms 50
 
   @impl true
   @doc """
   Initializes dashboard assigns for the current user scope.
 
-  Loads nodes visible to the authenticated user and maps each node into a
-  default row shape used by the dashboard table.
+  Loads nodes visible to the authenticated user with their current hot
+  telemetry state. When the LiveView is connected, it also subscribes to
+  lightweight dashboard invalidation events and initializes coalescing state
+  used to batch row refreshes.
   """
 
   def mount(_params, _session, socket) do
+    if connected?(socket), do: Telemetry.subscribe_dashboard_updates()
+
     scope = socket.assigns.current_scope
-    rows = Telemetry.list_nodes(scope) |> Enum.map(&to_cold_row/1)
+    rows = Telemetry.list_nodes_with_hot_state(scope)
 
     {:ok,
       socket
       |> assign(:page_title, "Control Room")
       |> assign(:rows, rows)
+      |> assign(:pending_node_ids, MapSet.new())
+      |> assign(:refresh_timer_ref, nil)
     }
   end
 
@@ -65,6 +74,49 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       </div>
     </Layouts.app>
     """
+  end
+
+  @impl true
+  def handle_info({:node_changed, machine_identifier, _event_count, _timestamp}, socket) do
+    pending_node_ids = MapSet.put(socket.assigns.pending_node_ids, machine_identifier)
+
+    socket =
+      if socket.assigns.refresh_timer_ref do
+        assign(socket, :pending_node_ids, pending_node_ids)
+      else
+        timer_ref = Process.send_after(self(), :refresh_pending_nodes, @refresh_delay_ms)
+
+        socket
+        |> assign(:pending_node_ids, pending_node_ids)
+        |> assign(:refresh_timer_ref, timer_ref)
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(:refresh_pending_nodes, socket) do
+    scope = socket.assigns.current_scope
+
+    refreshed_rows_by_machine_id =
+      socket.assigns.pending_node_ids
+      |> Enum.reduce(%{}, fn machine_identifier, acc ->
+        case Telemetry.get_node_with_hot_state(scope, machine_identifier) do
+          nil -> acc
+          row -> Map.put(acc, machine_identifier, row)
+        end
+      end)
+
+    rows =
+      Enum.map(socket.assigns.rows, fn row ->
+        Map.get(refreshed_rows_by_machine_id, row.machine_identifier, row)
+      end)
+
+    {:noreply,
+     socket
+     |> assign(:rows, rows)
+     |> assign(:pending_node_ids, MapSet.new())
+     |> assign(:refresh_timer_ref, nil)}
   end
 
   @doc """
