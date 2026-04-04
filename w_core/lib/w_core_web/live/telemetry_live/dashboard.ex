@@ -65,7 +65,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
             <tr :for={row <- @rows} id={"node-#{row.machine_identifier}"}>
               <td>{row.machine_identifier}</td>
               <td>{row.location}</td>
-              <td>{row.status}</td>
+              <td><.status_badge status={row.status} /></td>
               <td>{row.total_events_processed}</td>
               <td>{format_ts(row.last_seen_at)}</td>
             </tr>
