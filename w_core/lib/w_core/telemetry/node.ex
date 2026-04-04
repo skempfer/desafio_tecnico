@@ -8,10 +8,25 @@ defmodule WCore.Telemetry.Node do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: integer() | nil,
+          machine_identifier: String.t() | nil,
+          location: String.t() | nil,
+          user_id: integer() | nil,
+          node_metric:
+            WCore.Telemetry.NodeMetrics.t()
+            | Ecto.Association.NotLoaded.t()
+            | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   schema "nodes" do
     field :machine_identifier, :string
     field :location, :string
     field :user_id, :id
+
+    has_one :node_metric, WCore.Telemetry.NodeMetrics
 
     timestamps(type: :utc_datetime)
   end
@@ -35,6 +50,7 @@ defmodule WCore.Telemetry.Node do
   ## Returns
   - An `%Ecto.Changeset{}` ready for insertion or persistence.
   """
+  @spec changeset(term(), term(), term()) :: term()
   def changeset(node, attrs, user_scope) do
     node
     |> cast(attrs, [:machine_identifier, :location])

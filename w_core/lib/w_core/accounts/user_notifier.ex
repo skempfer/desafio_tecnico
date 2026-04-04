@@ -7,8 +7,8 @@ defmodule WCore.Accounts.UserNotifier do
 
   import Swoosh.Email
 
-  alias WCore.Mailer
   alias WCore.Accounts.User
+  alias WCore.Mailer
 
   # Delivers the email using the application mailer.
   defp deliver(recipient, subject, body) do
@@ -27,6 +27,7 @@ defmodule WCore.Accounts.UserNotifier do
   @doc """
   Deliver instructions to update a user email.
   """
+  @spec deliver_update_email_instructions(term(), term()) :: term()
   def deliver_update_email_instructions(user, url) do
     deliver(user.email, "Update email instructions", """
 
@@ -47,6 +48,7 @@ defmodule WCore.Accounts.UserNotifier do
   @doc """
   Deliver instructions to log in with a magic link.
   """
+  @spec deliver_login_instructions(term(), term()) :: term()
   def deliver_login_instructions(user, url) do
     case user do
       %User{confirmed_at: nil} -> deliver_confirmation_instructions(user, url)

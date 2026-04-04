@@ -47,6 +47,7 @@ defmodule WCoreWeb.CoreComponents do
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
+  @spec flash(term()) :: term()
   def flash(assigns) do
     assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
 
@@ -93,6 +94,7 @@ defmodule WCoreWeb.CoreComponents do
   attr :variant, :string, values: ~w(primary)
   slot :inner_block, required: true
 
+  @spec button(term()) :: term()
   def button(%{rest: rest} = assigns) do
     variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
 
@@ -181,6 +183,7 @@ defmodule WCoreWeb.CoreComponents do
     include: ~w(accept autocomplete capture cols disabled form list max maxlength min minlength
                 multiple pattern placeholder readonly required rows size step)
 
+  @spec input(term()) :: term()
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
 
@@ -312,6 +315,7 @@ defmodule WCoreWeb.CoreComponents do
   slot :subtitle
   slot :actions
 
+  @spec header(term()) :: term()
   def header(assigns) do
     ~H"""
     <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
@@ -353,6 +357,7 @@ defmodule WCoreWeb.CoreComponents do
 
   slot :action, doc: "the slot for showing user actions in the last table column"
 
+  @spec table(term()) :: term()
   def table(assigns) do
     assigns =
       with %{rows: %Phoenix.LiveView.LiveStream{}} <- assigns do
@@ -405,6 +410,7 @@ defmodule WCoreWeb.CoreComponents do
     attr :title, :string, required: true
   end
 
+  @spec list(term()) :: term()
   def list(assigns) do
     ~H"""
     <ul class="list">
@@ -439,6 +445,7 @@ defmodule WCoreWeb.CoreComponents do
   attr :name, :string, required: true
   attr :class, :any, default: "size-4"
 
+  @spec icon(term()) :: term()
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
     <span class={[@name, @class]} />
@@ -447,6 +454,7 @@ defmodule WCoreWeb.CoreComponents do
 
   ## JS Commands
 
+  @spec show(term(), term()) :: term()
   def show(js \\ %JS{}, selector) do
     JS.show(js,
       to: selector,
@@ -458,6 +466,7 @@ defmodule WCoreWeb.CoreComponents do
     )
   end
 
+  @spec hide(term(), term()) :: term()
   def hide(js \\ %JS{}, selector) do
     JS.hide(js,
       to: selector,
@@ -471,6 +480,7 @@ defmodule WCoreWeb.CoreComponents do
   @doc """
   Translates an error message using gettext.
   """
+  @spec translate_error(term()) :: term()
   def translate_error({msg, opts}) do
     # When using gettext, we typically pass the strings we want
     # to translate as a static argument:
@@ -492,6 +502,7 @@ defmodule WCoreWeb.CoreComponents do
   @doc """
   Translates the errors for a field from a keyword list of errors.
   """
+  @spec translate_errors(term(), term()) :: term()
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end

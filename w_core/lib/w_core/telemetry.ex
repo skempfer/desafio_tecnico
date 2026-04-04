@@ -4,10 +4,86 @@ defmodule WCore.Telemetry do
   """
 
   import Ecto.Query, warn: false
+  alias WCore.Accounts.Scope
   alias WCore.Repo
   alias WCore.Telemetry.Node
-  alias WCore.Accounts.Scope
   alias WCore.Telemetry.NodeMetrics
+  alias WCore.Telemetry.TelemetryEvent
+
+  @type node_id :: String.t()
+  @type node_status :: String.t()
+  @type payload :: map()
+  @type event_count :: non_neg_integer()
+  @type event_timestamp :: DateTime.t()
+  @type cache_record :: {node_id(), node_status(), event_count(), payload(), event_timestamp()}
+  @type processed_key :: {node_id(), event_timestamp()}
+
+  @doc """
+  Persists a raw telemetry event before cache aggregation.
+  """
+  @spec record_telemetry_event(String.t(), String.t(), map(), DateTime.t()) ::
+          {:ok, TelemetryEvent.t()} | {:error, Ecto.Changeset.t()}
+  def record_telemetry_event(machine_identifier, status, payload, occurred_at) do
+    %TelemetryEvent{}
+    |> TelemetryEvent.changeset(%{
+      machine_identifier: machine_identifier,
+      status: status,
+      payload: payload,
+      occurred_at: occurred_at
+    })
+    |> Repo.insert()
+  end
+
+  @doc """
+  Marks a telemetry event as processed.
+
+  Updates `processed_at` to record when the event was consumed by the
+  final persistence flow.
+  """
+  @spec mark_telemetry_event_processed(pos_integer(), DateTime.t()) ::
+          {:ok, TelemetryEvent.t()} | {:error, Ecto.Changeset.t()}
+  def mark_telemetry_event_processed(event_id, processed_at) do
+    event = Repo.get!(TelemetryEvent, event_id)
+
+    event
+    |> TelemetryEvent.changeset(%{processed_at: processed_at})
+    |> Repo.update()
+  end
+
+  @doc """
+  Lists telemetry events that are still unprocessed.
+
+  An event is considered pending when `processed_at` is `nil`.
+  """
+  @spec get_unprocessed_telemetry_events() :: [TelemetryEvent.t()]
+  def get_unprocessed_telemetry_events do
+    from(e in TelemetryEvent,
+      where: is_nil(e.processed_at),
+      order_by: [asc: e.occurred_at, asc: e.id]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Marks pending events as processed for a machine at a given timestamp.
+
+  Returns the number of updated events.
+  """
+  @spec mark_unprocessed_events_as_processed(
+          String.t(),
+          DateTime.t(),
+          DateTime.t()
+        ) :: non_neg_integer()
+  def mark_unprocessed_events_as_processed(machine_identifier, occurred_at, processed_at) do
+    from(e in TelemetryEvent,
+      where:
+        e.machine_identifier == ^machine_identifier and
+          e.occurred_at == ^occurred_at and
+          is_nil(e.processed_at)
+    )
+    |> Repo.update_all(set: [processed_at: processed_at])
+    |> elem(0)
+  end
 
   @doc """
   Subscribes to scoped notifications about any node changes.
@@ -19,6 +95,7 @@ defmodule WCore.Telemetry do
     * {:deleted, %Node{}}
 
   """
+  @spec subscribe_nodes(term()) :: term()
   def subscribe_nodes(%Scope{} = scope) do
     key = scope.user.id
 
@@ -40,6 +117,7 @@ defmodule WCore.Telemetry do
       [%Node{}, ...]
 
   """
+  @spec list_nodes(term()) :: term()
   def list_nodes(%Scope{} = scope) do
     Repo.all_by(Node, user_id: scope.user.id)
   end
@@ -58,6 +136,7 @@ defmodule WCore.Telemetry do
       ** (Ecto.NoResultsError)
 
   """
+  @spec get_node!(term(), term()) :: term()
   def get_node!(%Scope{} = scope, id) do
     Repo.get_by!(Node, id: id, user_id: scope.user.id)
   end
@@ -74,6 +153,7 @@ defmodule WCore.Telemetry do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec create_node(term(), term()) :: term()
   def create_node(%Scope{} = scope, attrs) do
     with {:ok, node = %Node{}} <-
            %Node{}
@@ -96,6 +176,7 @@ defmodule WCore.Telemetry do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec update_node(term(), term(), term()) :: term()
   def update_node(%Scope{} = scope, %Node{} = node, attrs) do
     true = node.user_id == scope.user.id
 
@@ -120,6 +201,7 @@ defmodule WCore.Telemetry do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec delete_node(term(), term()) :: term()
   def delete_node(%Scope{} = scope, %Node{} = node) do
     true = node.user_id == scope.user.id
 
@@ -139,6 +221,7 @@ defmodule WCore.Telemetry do
       %Ecto.Changeset{data: %Node{}}
 
   """
+  @spec change_node(term(), term(), term()) :: term()
   def change_node(%Scope{} = scope, %Node{} = node, attrs \\ %{}) do
     true = node.user_id == scope.user.id
 
@@ -158,6 +241,7 @@ defmodule WCore.Telemetry do
       iex> get_node_metric!(456)
       ** (Ecto.NoResultsError)
   """
+  @spec get_node_metric!(term()) :: term()
   def get_node_metric!(id), do: Repo.get!(NodeMetrics, id)
 
   @doc """
@@ -174,8 +258,14 @@ defmodule WCore.Telemetry do
       iex> get_last_metric_by_node(nonexistent_node_id)
       nil
   """
+  @spec get_last_metric_by_node(term()) :: term()
   def get_last_metric_by_node(node_id) do
-    query = from m in NodeMetrics, where: m.node_id == ^node_id, order_by: [desc: m.inserted_at], limit: 1
+    query =
+      from m in NodeMetrics,
+        where: m.node_id == ^node_id,
+        order_by: [desc: m.inserted_at],
+        limit: 1
+
     Repo.one(query)
   end
 
@@ -193,16 +283,92 @@ defmodule WCore.Telemetry do
       iex> upsert_node_metric(node, %{invalid_field: "value"})
       {:error, %Ecto.Changeset{}}
   """
+  @spec upsert_node_metric(term(), term()) :: term()
   def upsert_node_metric(%Node{} = node, attrs) do
-    case get_last_metric_by_node(node.id) do
+    case Repo.get_by(NodeMetrics, node_id: node.id) do
       nil ->
         %NodeMetrics{node_id: node.id}
         |> NodeMetrics.changeset(attrs)
         |> Repo.insert()
+
       metric ->
         metric
         |> NodeMetrics.changeset(attrs)
         |> Repo.update()
+    end
+  end
+
+  @doc """
+  Performs a batch upsert of metrics coming from ETS cache records.
+
+  Only records whose machine identifier matches an existing node are persisted.
+  Returns the `{machine_identifier, occurred_at}` pairs that were persisted,
+  so callers can mark corresponding telemetry events as processed.
+  """
+  @spec upsert_node_metrics_batch([cache_record()]) :: [processed_key()]
+  def upsert_node_metrics_batch(records) when is_list(records) do
+    machine_identifiers =
+      records
+      |> Enum.map(fn {machine_identifier, _status, _count, _payload, _occurred_at} ->
+        machine_identifier
+      end)
+      |> Enum.uniq()
+
+    node_ids_by_machine_identifier =
+      from(n in Node,
+        where: n.machine_identifier in ^machine_identifiers,
+        select: {n.machine_identifier, n.id}
+      )
+      |> Repo.all()
+      |> Map.new()
+
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    {rows, persisted_keys} =
+      Enum.reduce(records, {[], []}, fn
+        {machine_identifier, status, count, payload, occurred_at}, {rows_acc, keys_acc} ->
+          case Map.fetch(node_ids_by_machine_identifier, machine_identifier) do
+            {:ok, node_id} ->
+              occurred_at = DateTime.truncate(occurred_at, :second)
+
+              row = %{
+                node_id: node_id,
+                status: status,
+                total_events_processed: count,
+                last_payload: payload,
+                last_seen_at: occurred_at,
+                inserted_at: now,
+                updated_at: now
+              }
+
+              {[row | rows_acc], [{machine_identifier, occurred_at} | keys_acc]}
+
+            :error ->
+              {rows_acc, keys_acc}
+          end
+      end)
+
+    case rows do
+      [] ->
+        []
+
+      _ ->
+        Repo.insert_all(NodeMetrics, rows,
+          on_conflict:
+            {:replace,
+             [
+               :status,
+               :total_events_processed,
+               :last_payload,
+               :last_seen_at,
+               :updated_at
+             ]},
+          conflict_target: [:node_id]
+        )
+
+        persisted_keys
+        |> Enum.reverse()
+        |> Enum.uniq()
     end
   end
 
@@ -217,9 +383,28 @@ defmodule WCore.Telemetry do
       iex> list_node_with_metrics()
       [%Node{node_metric: %NodeMetrics{}}, %Node{node_metric: nil}, ...]
   """
+  @spec list_node_with_metrics() :: term()
   def list_node_with_metrics do
-    query = from n in Node, left_join: m in NodeMetrics, on: n.id == m.node_id,
-      preload: [:node_metric]
-    Repo.all(query)
+    Node
+    |> preload(:node_metric)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets a node by its machine identifier.
+
+  Returns the node if found, or `nil` if no node exists with the given machine identifier.
+
+  ## Examples
+
+      iex> get_node_by_machine_identifier("machine_123")
+      %Node{}
+
+      iex> get_node_by_machine_identifier("nonexistent_machine")
+      nil
+  """
+  @spec get_node_by_machine_identifier(String.t()) :: Node.t() | nil
+  def get_node_by_machine_identifier(machine_id) do
+    Repo.get_by(Node, machine_identifier: machine_id)
   end
 end

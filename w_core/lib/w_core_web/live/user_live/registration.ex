@@ -5,6 +5,7 @@ defmodule WCoreWeb.UserLive.Registration do
   alias WCore.Accounts.User
 
   @impl true
+  @spec render(term()) :: term()
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
@@ -43,11 +44,13 @@ defmodule WCoreWeb.UserLive.Registration do
   end
 
   @impl true
+  @spec mount(term(), term(), term()) :: term()
   def mount(_params, _session, %{assigns: %{current_scope: %{user: user}}} = socket)
       when not is_nil(user) do
     {:ok, redirect(socket, to: WCoreWeb.UserAuth.signed_in_path(socket))}
   end
 
+  @spec mount(term(), term(), term()) :: term()
   def mount(_params, _session, socket) do
     changeset = Accounts.change_user_email(%User{}, %{}, validate_unique: false)
 
@@ -55,6 +58,7 @@ defmodule WCoreWeb.UserLive.Registration do
   end
 
   @impl true
+  @spec handle_event(term(), term(), term()) :: term()
   def handle_event("save", %{"user" => user_params}, socket) do
     case Accounts.register_user(user_params) do
       {:ok, user} ->

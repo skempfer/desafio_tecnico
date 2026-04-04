@@ -1,0 +1,10 @@
+_build/
+cover/
+deps/
+assets/node_modules/
+.git/
+.gitignore
+*.md
+data/*.sqlite3
+data/*.sqlite3-shm
+data/*.sqlite3-wal
