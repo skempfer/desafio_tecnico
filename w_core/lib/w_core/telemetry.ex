@@ -4,9 +4,9 @@ defmodule WCore.Telemetry do
   """
 
   import Ecto.Query, warn: false
+  alias WCore.Accounts.Scope
   alias WCore.Repo
   alias WCore.Telemetry.Node
-  alias WCore.Accounts.Scope
   alias WCore.Telemetry.NodeMetrics
 
   @doc """
@@ -184,7 +184,12 @@ defmodule WCore.Telemetry do
   """
   @spec get_last_metric_by_node(term()) :: term()
   def get_last_metric_by_node(node_id) do
-    query = from m in NodeMetrics, where: m.node_id == ^node_id, order_by: [desc: m.inserted_at], limit: 1
+    query =
+      from m in NodeMetrics,
+        where: m.node_id == ^node_id,
+        order_by: [desc: m.inserted_at],
+        limit: 1
+
     Repo.one(query)
   end
 

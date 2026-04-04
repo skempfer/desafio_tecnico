@@ -6,7 +6,7 @@ defmodule WCore.Accounts do
   import Ecto.Query, warn: false
   alias WCore.Repo
 
-  alias WCore.Accounts.{User, UserToken, UserNotifier}
+  alias WCore.Accounts.{User, UserNotifier, UserToken}
 
   ## Database getters
 

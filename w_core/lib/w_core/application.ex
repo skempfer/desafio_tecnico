@@ -44,7 +44,7 @@ defmodule WCore.Application do
     :ok
   end
 
-  defp skip_migrations?() do
+  defp skip_migrations? do
     # Run migrations automatically outside releases.
     System.get_env("RELEASE_NAME") == nil
   end

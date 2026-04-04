@@ -1,4 +1,8 @@
 defmodule WCoreWeb.UserAuth do
+  @moduledoc """
+  Authentication and session helpers for controllers and LiveViews.
+  """
+
   use WCoreWeb, :verified_routes
 
   import Plug.Conn

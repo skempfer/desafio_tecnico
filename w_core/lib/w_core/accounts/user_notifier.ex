@@ -7,8 +7,8 @@ defmodule WCore.Accounts.UserNotifier do
 
   import Swoosh.Email
 
-  alias WCore.Mailer
   alias WCore.Accounts.User
+  alias WCore.Mailer
 
   # Delivers the email using the application mailer.
   defp deliver(recipient, subject, body) do
