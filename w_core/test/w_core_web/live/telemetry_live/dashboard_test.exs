@@ -315,4 +315,31 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
 
     assert has_element?(lv, "th[aria-sort='descending'] button[phx-value-by='events']")
   end
+
+  test "canonicalizes invalid query params to clean URL", %{conn: conn} do
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user_fixture())
+      |> live(~p"/control-room?page=0&q=%20%20&status=invalid&sort_by=invalid&sort_dir=invalid")
+
+    assert_patch(lv, ~p"/control-room")
+  end
+
+  test "canonicalizes out-of-range page to last available page", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Enum.each(1..25, fn i ->
+      machine_identifier = "sensor-#{String.pad_leading(Integer.to_string(i), 2, "0")}"
+      Telemetry.create_node(scope, %{machine_identifier: machine_identifier, location: "lab"})
+    end)
+
+    {:ok, lv, html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room?page=999")
+
+    assert html =~ "2 / 2"
+    assert_patch(lv, ~p"/control-room?page=2")
+  end
 end

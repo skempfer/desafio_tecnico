@@ -16,6 +16,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   @auto_refresh_seconds 10
   @countdown_tick_ms 1_000
   @countdown_circumference 100.53
+  @query_param_keys ~w(page q status sort_by sort_dir)
 
   @impl true
   @doc """
@@ -71,20 +72,36 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     sort_by = normalize_sort_by(Map.get(params, "sort_by"))
     sort_dir = normalize_sort_dir(Map.get(params, "sort_dir"))
 
-    if page == socket.assigns.page and
-         search_query == socket.assigns.search_query and
-         status_filter == socket.assigns.status_filter and
-         sort_by == socket.assigns.sort_by and
-         sort_dir == socket.assigns.sort_dir do
+    socket =
+      if page == socket.assigns.page and
+           search_query == socket.assigns.search_query and
+           status_filter == socket.assigns.status_filter and
+           sort_by == socket.assigns.sort_by and
+           sort_dir == socket.assigns.sort_dir do
+        socket
+      else
+        socket
+        |> assign(:search_query, search_query)
+        |> assign(:status_filter, status_filter)
+        |> assign(:sort_by, sort_by)
+        |> assign(:sort_dir, sort_dir)
+        |> load_page(page)
+      end
+
+    incoming_query_params =
+      params
+      |> Map.take(@query_param_keys)
+      |> normalize_query_params()
+
+    canonical_query_params =
+      socket
+      |> current_query_params()
+      |> normalize_query_params()
+
+    if incoming_query_params == canonical_query_params do
       {:noreply, socket}
     else
-      {:noreply,
-       socket
-       |> assign(:search_query, search_query)
-       |> assign(:status_filter, status_filter)
-       |> assign(:sort_by, sort_by)
-       |> assign(:sort_dir, sort_dir)
-       |> load_page(page)}
+      {:noreply, push_patch(socket, to: ~p"/control-room?#{canonical_query_params}", replace: true)}
     end
   end
 
