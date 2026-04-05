@@ -180,4 +180,41 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     assert html =~ "reactor-offline"
     assert html =~ "reactor-unknown"
   end
+
+  test "sorts by events and toggles direction from table header", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+    ts = ~U[2026-04-04 17:00:00Z]
+
+    Telemetry.create_node(scope, %{machine_identifier: "node-a", location: "A"})
+    Telemetry.create_node(scope, %{machine_identifier: "node-b", location: "B"})
+
+    Ingester.ingest_event("node-a", "online", %{}, ts)
+    Ingester.ingest_event("node-b", "online", %{}, ts)
+    Ingester.ingest_event("node-b", "online", %{}, ts)
+
+    Process.sleep(80)
+
+    {:ok, lv, html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    refute html =~ "Events ↑"
+    refute html =~ "Events ↓"
+
+    html =
+      lv
+      |> element("button[phx-value-by='events']")
+      |> render_click()
+
+    assert html =~ "Events ↑"
+
+    html =
+      lv
+      |> element("button[phx-value-by='events']")
+      |> render_click()
+
+    assert html =~ "Events ↓"
+  end
 end

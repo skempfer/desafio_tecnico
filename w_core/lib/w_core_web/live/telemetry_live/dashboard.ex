@@ -53,6 +53,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:search_query, search_query)
       |> assign(:status_filter, "all")
       |> assign(:status_counts, %{all: 0, online: 0, degraded: 0, offline: 0, unknown: 0})
+      |> assign(:sort_by, "machine")
+      |> assign(:sort_dir, "asc")
       |> assign(:countdown_circumference, @countdown_circumference)
       |> assign(:seconds_until_refresh, @auto_refresh_seconds)
       |> load_page(page)
@@ -72,27 +74,46 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         Control Room
         <:subtitle>Real-time machine heartbeat overview</:subtitle>
         <:actions>
-          <div class="inline-flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div class="text-xs leading-5">
-              <p class="font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Next update in</p>
+          <div class="flex flex-wrap items-center justify-end gap-3">
+            <div
+              id="dashboard-connection-status"
+              phx-hook="ConnectionStatus"
+              data-state="connected"
+              class="group inline-flex min-w-28 flex-col items-end rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <div class="text-xs leading-5 text-right">
+                <p class="font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Connection</p>
+                <p data-role="connection-label" class="inline-flex items-center justify-end gap-2 font-medium text-zinc-800 dark:text-zinc-100">
+                  <span
+                    class="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)] transition-colors duration-300 group-data-[state=disconnected]:bg-amber-500 group-data-[state=disconnected]:shadow-[0_0_0_4px_rgba(245,158,11,0.18)]"
+                  />
+                  Live
+                </p>
+              </div>
             </div>
 
-            <div class="relative size-10">
-              <svg viewBox="0 0 40 40" class="size-10 -rotate-90" role="img" aria-label="Auto refresh countdown">
-                <circle cx="20" cy="20" r="16" class="fill-none stroke-zinc-200 dark:stroke-zinc-700" stroke-width="4" />
-                <circle
-                  cx="20"
-                  cy="20"
-                  r="16"
-                  class="fill-none stroke-indigo-500 transition-all duration-700 ease-linear"
-                  stroke-width="4"
-                  stroke-linecap="round"
-                  stroke-dasharray={@countdown_circumference}
-                  stroke-dashoffset={countdown_offset(@seconds_until_refresh)}
-                />
-              </svg>
-              <div class="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
-                {@seconds_until_refresh}
+            <div class="inline-flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="text-xs leading-5">
+                <p class="font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Next update in</p>
+              </div>
+
+              <div class="relative size-10">
+                <svg viewBox="0 0 40 40" class="size-10 -rotate-90" role="img" aria-label="Auto refresh countdown">
+                  <circle cx="20" cy="20" r="16" class="fill-none stroke-zinc-200 dark:stroke-zinc-700" stroke-width="4" />
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="16"
+                    class="fill-none stroke-indigo-500 transition-all duration-700 ease-linear"
+                    stroke-width="4"
+                    stroke-linecap="round"
+                    stroke-dasharray={@countdown_circumference}
+                    stroke-dashoffset={countdown_offset(@seconds_until_refresh)}
+                  />
+                </svg>
+                <div class="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
+                  {@seconds_until_refresh}
+                </div>
               </div>
             </div>
           </div>
@@ -177,15 +198,20 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         </button>
       </section>
 
-      <div class="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <table class="w-full border-collapse text-left text-sm">
+      <div
+        id="dashboard-results"
+        phx-hook="DashboardLoading"
+        data-loading="false"
+        class="group relative overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      >
+        <table class="w-full border-collapse text-left text-sm transition-opacity duration-150 group-data-[loading=true]:opacity-55">
           <thead class="border-b border-zinc-200 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
             <tr>
-              <th class="px-5 py-3.5 font-semibold">Machine</th>
-              <th class="px-5 py-3.5 font-semibold">Location</th>
-              <th class="px-5 py-3.5 font-semibold">Status</th>
-              <th class="px-5 py-3.5 font-semibold">Events</th>
-              <th class="px-5 py-3.5 font-semibold">Last Seen</th>
+              <th class="px-5 py-3.5 font-semibold"><.sort_button by="machine" current_by={@sort_by} current_dir={@sort_dir}>Machine</.sort_button></th>
+              <th class="px-5 py-3.5 font-semibold"><.sort_button by="location" current_by={@sort_by} current_dir={@sort_dir}>Location</.sort_button></th>
+              <th class="px-5 py-3.5 font-semibold"><.sort_button by="status" current_by={@sort_by} current_dir={@sort_dir}>Status</.sort_button></th>
+              <th class="px-5 py-3.5 font-semibold"><.sort_button by="events" current_by={@sort_by} current_dir={@sort_dir}>Events</.sort_button></th>
+              <th class="px-5 py-3.5 font-semibold"><.sort_button by="last_seen" current_by={@sort_by} current_dir={@sort_dir}>Last Seen</.sort_button></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-zinc-200 text-zinc-800 dark:divide-zinc-800 dark:text-zinc-200">
@@ -207,6 +233,13 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
             </tr>
           </tbody>
         </table>
+
+        <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/60 opacity-0 transition-opacity duration-150 group-data-[loading=true]:opacity-100 dark:bg-zinc-900/60">
+          <div class="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+            <span class="size-2 rounded-full bg-indigo-500 animate-pulse" />
+            Updating
+          </div>
+        </div>
       </div>
 
       <div class="mt-5 grid items-center gap-3 sm:grid-cols-3">
@@ -263,6 +296,24 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     {:noreply,
      socket
      |> assign(:status_filter, normalize_status_filter(status))
+     |> load_page(1)}
+  end
+
+  @impl true
+  def handle_event("sort", %{"by" => by}, socket) do
+    by = normalize_sort_by(by)
+
+    {sort_by, sort_dir} =
+      if socket.assigns.sort_by == by do
+        {by, toggle_sort_dir(socket.assigns.sort_dir)}
+      else
+        {by, "asc"}
+      end
+
+    {:noreply,
+     socket
+     |> assign(:sort_by, sort_by)
+     |> assign(:sort_dir, sort_dir)
      |> load_page(1)}
   end
 
@@ -393,6 +444,22 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp normalize_status_filter(_status), do: "all"
 
+  defp normalize_sort_by(by) when is_binary(by) do
+    case String.downcase(String.trim(by)) do
+      "machine" -> "machine"
+      "location" -> "location"
+      "status" -> "status"
+      "events" -> "events"
+      "last_seen" -> "last_seen"
+      _ -> "machine"
+    end
+  end
+
+  defp normalize_sort_by(_by), do: "machine"
+
+  defp toggle_sort_dir("asc"), do: "desc"
+  defp toggle_sort_dir(_), do: "asc"
+
   defp load_page(socket, requested_page) do
     scope = socket.assigns.current_scope
 
@@ -402,7 +469,9 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         page: requested_page,
         per_page: @nodes_per_page,
         search: socket.assigns.search_query,
-        status: socket.assigns.status_filter
+        status: socket.assigns.status_filter,
+        sort_by: socket.assigns.sort_by,
+        sort_dir: socket.assigns.sort_dir
       )
 
     if socket.assigns.refresh_timer_ref do
@@ -489,6 +558,30 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> Kernel./(@auto_refresh_seconds)
 
     Float.round(@countdown_circumference * (1 - progress), 2)
+  end
+
+  attr :by, :string, required: true
+  attr :current_by, :string, required: true
+  attr :current_dir, :string, required: true
+  slot :inner_block, required: true
+
+  defp sort_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="sort"
+      phx-value-by={@by}
+      class="inline-flex items-center gap-1.5 font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
+    >
+      {render_slot(@inner_block)}
+      <span
+        :if={@current_by == @by}
+        class="inline-flex size-5 items-center justify-center rounded-full bg-zinc-200 text-[11px] font-bold leading-none text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100"
+      >
+        {if @current_dir == "asc", do: "↑", else: "↓"}
+      </span>
+    </button>
+    """
   end
 
   defp schedule_auto_refresh do

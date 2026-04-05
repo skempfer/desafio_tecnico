@@ -236,5 +236,39 @@ defmodule WCore.TelemetryTest do
       assert page_others.total_entries == 1
       assert hd(page_others.entries).machine_identifier == "reactor-unknown"
     end
+
+    test "list_nodes_with_hot_state_paginated/2 sorts by events and last_seen" do
+      scope = user_scope_fixture()
+      ts1 = ~U[2026-04-04 10:00:00Z]
+      ts2 = ~U[2026-04-04 11:00:00Z]
+      ts3 = ~U[2026-04-04 12:00:00Z]
+
+      node_fixture(scope, %{machine_identifier: "node-a", location: "A"})
+      node_fixture(scope, %{machine_identifier: "node-b", location: "B"})
+      node_fixture(scope, %{machine_identifier: "node-c", location: "C"})
+
+      WCore.Telemetry.Cache.put("node-a", "online", %{}, ts1)
+      WCore.Telemetry.Cache.put("node-b", "online", %{}, ts2)
+      WCore.Telemetry.Cache.put("node-c", "online", %{}, ts3)
+
+      WCore.Telemetry.Cache.put("node-a", "online", %{}, ts1)
+      WCore.Telemetry.Cache.put("node-b", "online", %{}, ts2)
+
+      page_events_desc =
+        Telemetry.list_nodes_with_hot_state_paginated(scope,
+          sort_by: "events",
+          sort_dir: "desc"
+        )
+
+      assert Enum.map(page_events_desc.entries, & &1.machine_identifier) == ["node-b", "node-a", "node-c"]
+
+      page_last_seen_desc =
+        Telemetry.list_nodes_with_hot_state_paginated(scope,
+          sort_by: "last_seen",
+          sort_dir: "desc"
+        )
+
+      assert Enum.map(page_last_seen_desc.entries, & &1.machine_identifier) == ["node-c", "node-b", "node-a"]
+    end
   end
 end

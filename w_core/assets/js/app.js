@@ -25,11 +25,68 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/w_core"
 import topbar from "../vendor/topbar"
 
+const ConnectionStatus = {
+  mounted() {
+    this.updateState(this.liveSocket.isConnected() ? "connected" : "disconnected")
+
+    this.handleConnected = () => this.updateState("connected")
+    this.handleDisconnected = () => this.updateState("disconnected")
+
+    window.addEventListener("phx:connected", this.handleConnected)
+    window.addEventListener("phx:disconnected", this.handleDisconnected)
+  },
+
+  destroyed() {
+    window.removeEventListener("phx:connected", this.handleConnected)
+    window.removeEventListener("phx:disconnected", this.handleDisconnected)
+  },
+
+  updateState(state) {
+    this.el.dataset.state = state
+
+    const label = this.el.querySelector("[data-role='connection-label']")
+    if (label) {
+      label.textContent = state === "connected" ? "Live" : "Reconnecting"
+    }
+  },
+}
+
+const DashboardLoading = {
+  mounted() {
+    this.activeLoads = 0
+
+    this.onStart = () => {
+      this.activeLoads += 1
+      this.setLoading(true)
+    }
+
+    this.onStop = () => {
+      this.activeLoads = Math.max(0, this.activeLoads - 1)
+
+      if (this.activeLoads === 0) {
+        this.setLoading(false)
+      }
+    }
+
+    window.addEventListener("phx:page-loading-start", this.onStart)
+    window.addEventListener("phx:page-loading-stop", this.onStop)
+  },
+
+  destroyed() {
+    window.removeEventListener("phx:page-loading-start", this.onStart)
+    window.removeEventListener("phx:page-loading-stop", this.onStop)
+  },
+
+  setLoading(isLoading) {
+    this.el.dataset.loading = isLoading ? "true" : "false"
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, ConnectionStatus, DashboardLoading},
 })
 
 // Show progress bar on live navigation and form submits
@@ -80,4 +137,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-

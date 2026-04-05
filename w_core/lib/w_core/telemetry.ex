@@ -73,12 +73,16 @@ defmodule WCore.Telemetry do
     * `:per_page` - page size, defaults to `20` and caps at `100`
     * `:search` - optional case-insensitive filter on machine identifier and location
     * `:status` - optional status filter (`"all"`, `"online"`, `"degraded"`, `"offline"`, `"unknown"`)
+    * `:sort_by` - optional sort key (`"machine"`, `"location"`, `"status"`, `"events"`, `"last_seen"`)
+    * `:sort_dir` - optional sort direction (`"asc"`, `"desc"`)
   """
   @spec list_nodes_with_hot_state_paginated(Scope.t(), keyword()) :: hot_state_page()
   def list_nodes_with_hot_state_paginated(%Scope{} = scope, opts \\ []) do
     requested_page = normalize_positive_int(Keyword.get(opts, :page), 1)
     search = opts |> Keyword.get(:search, "") |> normalize_search_query()
     status_filter = opts |> Keyword.get(:status, "all") |> normalize_status_filter()
+    sort_by = opts |> Keyword.get(:sort_by, "machine") |> normalize_sort_by()
+    sort_dir = opts |> Keyword.get(:sort_dir, "asc") |> normalize_sort_dir()
 
     per_page =
       opts
@@ -101,12 +105,14 @@ defmodule WCore.Telemetry do
         status -> Enum.filter(hot_rows, &(&1.status == status))
       end
 
-    total_entries = length(filtered_rows)
+    sorted_rows = sort_rows(filtered_rows, sort_by, sort_dir)
+
+    total_entries = length(sorted_rows)
     total_pages = max(1, div(total_entries + per_page - 1, per_page))
     page = min(requested_page, total_pages)
     offset = (page - 1) * per_page
 
-    entries = Enum.slice(filtered_rows, offset, per_page)
+    entries = Enum.slice(sorted_rows, offset, per_page)
 
     %{
       entries: entries,
@@ -179,6 +185,47 @@ defmodule WCore.Telemetry do
   end
 
   defp normalize_status_filter(_status), do: "all"
+
+  defp normalize_sort_by(sort_by) when is_binary(sort_by) do
+    case String.downcase(String.trim(sort_by)) do
+      "machine" -> "machine"
+      "location" -> "location"
+      "status" -> "status"
+      "events" -> "events"
+      "last_seen" -> "last_seen"
+      _ -> "machine"
+    end
+  end
+
+  defp normalize_sort_by(_sort_by), do: "machine"
+
+  defp normalize_sort_dir(sort_dir) when is_binary(sort_dir) do
+    case String.downcase(String.trim(sort_dir)) do
+      "desc" -> "desc"
+      _ -> "asc"
+    end
+  end
+
+  defp normalize_sort_dir(_sort_dir), do: "asc"
+
+  defp sort_rows(rows, sort_by, sort_dir) do
+    sorter =
+      case sort_by do
+        "location" -> &{String.downcase(&1.location || ""), String.downcase(&1.machine_identifier)}
+        "status" -> &{String.downcase(&1.status || ""), String.downcase(&1.machine_identifier)}
+        "events" -> &{&1.total_events_processed || 0, String.downcase(&1.machine_identifier)}
+        "last_seen" -> &{normalize_last_seen(&1.last_seen_at), String.downcase(&1.machine_identifier)}
+        _ -> &{String.downcase(&1.machine_identifier), String.downcase(&1.location || "")}
+      end
+
+    case sort_dir do
+      "desc" -> Enum.sort_by(rows, sorter, :desc)
+      _ -> Enum.sort_by(rows, sorter, :asc)
+    end
+  end
+
+  defp normalize_last_seen(nil), do: ~U[1970-01-01 00:00:00Z]
+  defp normalize_last_seen(ts), do: ts
 
   defp build_status_counts(rows) do
     Enum.reduce(rows, %{all: 0, online: 0, degraded: 0, offline: 0, unknown: 0}, fn row, acc ->
