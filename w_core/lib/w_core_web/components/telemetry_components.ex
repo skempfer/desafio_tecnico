@@ -4,8 +4,10 @@ defmodule WCoreWeb.TelemetryComponents do
   @moduledoc """
   LiveView components for telemetry dashboard.
   """
+
   attr :status, :string, required: true
-   def status_badge(assigns) do
+
+  def status_badge(assigns) do
     ~H"""
     <span class={badge_class(@status)}>
       {@status}

@@ -51,23 +51,27 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       </.header>
 
       <div class="overflow-x-auto">
-        <table class="table w-full">
-          <thead>
+        <table class="w-full border-collapse text-left text-sm">
+          <thead class="border-b border-zinc-700 text-zinc-300">
             <tr>
-              <th>Machine</th>
-              <th>Location</th>
-              <th>Status</th>
-              <th>Events</th>
-              <th>Last Seen</th>
+              <th class="px-4 py-3 font-semibold">Machine</th>
+              <th class="px-4 py-3 font-semibold">Location</th>
+              <th class="px-4 py-3 font-semibold">Status</th>
+              <th class="px-4 py-3 font-semibold">Events</th>
+              <th class="px-4 py-3 font-semibold">Last Seen</th>
             </tr>
           </thead>
-          <tbody>
-            <tr :for={row <- @rows} id={"node-#{row.machine_identifier}"}>
-              <td>{row.machine_identifier}</td>
-              <td>{row.location}</td>
-              <td><.status_badge status={row.status} /></td>
-              <td>{row.total_events_processed}</td>
-              <td>{format_ts(row.last_seen_at)}</td>
+          <tbody class="divide-y divide-zinc-800 text-zinc-200">
+            <tr
+              :for={row <- @rows}
+              id={"node-#{row.machine_identifier}"}
+              class="hover:bg-zinc-900/50"
+            >
+              <td class="px-4 py-3">{row.machine_identifier}</td>
+              <td class="px-4 py-3">{row.location}</td>
+              <td class="px-4 py-3"><.status_badge status={row.status} /></td>
+              <td class="px-4 py-3">{row.total_events_processed}</td>
+              <td class="px-4 py-3">{format_ts(row.last_seen_at)}</td>
             </tr>
           </tbody>
         </table>
@@ -117,22 +121,6 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
      |> assign(:rows, rows)
      |> assign(:pending_node_ids, MapSet.new())
      |> assign(:refresh_timer_ref, nil)}
-  end
-
-  @doc """
-  Builds a cold-state row from a node record.
-
-  The returned map represents a node before any live telemetry updates are
-  received by the interface.
-  """
-  def to_cold_row(node) do
-    %{
-      machine_identifier: node.machine_identifier,
-      location: node.location,
-      status: "unknown",
-      total_events_processed: 0,
-      last_seen_at: nil
-    }
   end
 
   defp format_ts(nil), do: "-"
