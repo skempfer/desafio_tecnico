@@ -58,7 +58,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:search_query, search_query)
       |> assign(:status_filter, "all")
       |> assign(:status_counts, %{all: 0, online: 0, degraded: 0, offline: 0, unknown: 0})
-      |> assign(:sort_by, "machine")
+      |> assign(:sort_by, "status")
       |> assign(:sort_dir, "asc")
       |> assign(:auto_refresh_seconds, auto_refresh_seconds)
       |> assign(:countdown_circumference, @countdown_circumference)
@@ -127,6 +127,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       current_scope={@current_scope}
       page_title="Control Room"
       page_subtitle="Real-time machine heartbeat overview"
+      content_max_width="max-w-6xl"
     >
       <div class="mb-4 flex flex-col gap-3 sm:flex-row">
         <div
@@ -543,11 +544,11 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       "status" -> "status"
       "events" -> "events"
       "last_seen" -> "last_seen"
-      _ -> "machine"
+      _ -> "status"
     end
   end
 
-  defp normalize_sort_by(_by), do: "machine"
+  defp normalize_sort_by(_by), do: "status"
 
   defp normalize_sort_dir(dir) when is_binary(dir) do
     case String.downcase(String.trim(dir)) do
@@ -587,7 +588,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       {"page", "1"}, acc -> acc
       {"q", ""}, acc -> acc
       {"status", "all"}, acc -> acc
-      {"sort_by", "machine"}, acc -> acc
+      {"sort_by", "status"}, acc -> acc
       {"sort_dir", "asc"}, acc -> acc
       {key, value}, acc when is_binary(value) -> Map.put(acc, key, value)
       {_key, _value}, acc -> acc

@@ -33,6 +33,9 @@ defmodule WCoreWeb.Layouts do
 
   attr :page_title, :string, default: nil, doc: "optional page title shown in the app header"
   attr :page_subtitle, :string, default: nil, doc: "optional subtitle shown below the page title"
+  attr :content_max_width, :string,
+    default: "max-w-2xl",
+    doc: "tailwind max-width class for the page content container"
 
   slot :inner_block, required: true
 
@@ -68,7 +71,7 @@ defmodule WCoreWeb.Layouts do
     </header>
 
     <main class="px-4 pb-12 pt-6 sm:px-6 sm:pb-14 sm:pt-10 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+      <div class={["mx-auto space-y-4", @content_max_width]}>
         {render_slot(@inner_block)}
       </div>
     </main>

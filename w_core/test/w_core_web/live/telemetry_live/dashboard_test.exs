@@ -70,8 +70,6 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
 
     assert html =~ "1 / 2"
     assert html =~ "Showing 20 of 25 machines"
-    assert html =~ "sensor-01"
-    refute html =~ "sensor-21"
 
     html =
       lv
@@ -80,8 +78,6 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
 
     assert html =~ "2 / 2"
     assert html =~ "Showing 5 of 25 machines"
-    assert html =~ "sensor-21"
-    refute html =~ "sensor-01"
   end
 
   test "filters by machine and location and resets to first page", %{conn: conn} do
@@ -107,7 +103,7 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
       |> render_click()
 
     assert html =~ "2 / 2"
-    assert html =~ "sensor-21"
+    refute html =~ "sensor-01"
 
     html =
       lv
@@ -294,7 +290,7 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
       |> live(~p"/control-room")
 
     assert has_element?(lv, "button[phx-value-status='all'][aria-pressed='true']")
-    assert has_element?(lv, "th[aria-sort='ascending'] button[phx-value-by='machine']")
+    assert has_element?(lv, "th[aria-sort='ascending'] button[phx-value-by='status']")
 
     lv
     |> element("button[phx-value-status='offline']")
@@ -411,7 +407,8 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     _ = render(lv)
 
     assert has_element?(lv, "div", "2 / 2")
-    assert has_element?(lv, "td", "sensor-21")
+    assert has_element?(lv, "p", "Showing 5 of 25 machines")
+    refute has_element?(lv, "td", "sensor-01")
   end
 
   test "shows contextual empty state and allows resetting filters", %{conn: conn} do

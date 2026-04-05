@@ -81,7 +81,7 @@ defmodule WCore.Telemetry do
     requested_page = normalize_positive_int(Keyword.get(opts, :page), 1)
     search = opts |> Keyword.get(:search, "") |> normalize_search_query()
     status_filter = opts |> Keyword.get(:status, "all") |> normalize_status_filter()
-    sort_by = opts |> Keyword.get(:sort_by, "machine") |> normalize_sort_by()
+    sort_by = opts |> Keyword.get(:sort_by, "status") |> normalize_sort_by()
     sort_dir = opts |> Keyword.get(:sort_dir, "asc") |> normalize_sort_dir()
 
     per_page =
@@ -150,14 +150,27 @@ defmodule WCore.Telemetry do
         }
 
       nil ->
-        %{
-          machine_identifier: node.machine_identifier,
-          location: node.location,
-          status: "unknown",
-          total_events_processed: 0,
-          last_payload: %{},
-          last_seen_at: nil
-        }
+        case get_last_metric_by_node(node.id) do
+          %NodeMetrics{} = metric ->
+            %{
+              machine_identifier: node.machine_identifier,
+              location: node.location,
+              status: metric.status,
+              total_events_processed: metric.total_events_processed || 0,
+              last_payload: metric.last_payload || %{},
+              last_seen_at: metric.last_seen_at
+            }
+
+          nil ->
+            %{
+              machine_identifier: node.machine_identifier,
+              location: node.location,
+              status: "unknown",
+              total_events_processed: 0,
+              last_payload: %{},
+              last_seen_at: nil
+            }
+        end
     end
 
   end
@@ -193,11 +206,11 @@ defmodule WCore.Telemetry do
       "status" -> "status"
       "events" -> "events"
       "last_seen" -> "last_seen"
-      _ -> "machine"
+      _ -> "status"
     end
   end
 
-  defp normalize_sort_by(_sort_by), do: "machine"
+  defp normalize_sort_by(_sort_by), do: "status"
 
   defp normalize_sort_dir(sort_dir) when is_binary(sort_dir) do
     case String.downcase(String.trim(sort_dir)) do
@@ -217,7 +230,11 @@ defmodule WCore.Telemetry do
   end
 
   defp sort_key(row, "status") do
-    {String.downcase(row.status || ""), String.downcase(row.machine_identifier)}
+    {
+      status_priority(row.status),
+      -last_seen_unix(row.last_seen_at),
+      String.downcase(row.machine_identifier)
+    }
   end
 
   defp sort_key(row, "events") do
@@ -237,6 +254,15 @@ defmodule WCore.Telemetry do
 
   defp normalize_last_seen(nil), do: ~U[1970-01-01 00:00:00Z]
   defp normalize_last_seen(ts), do: ts
+
+  defp status_priority("offline"), do: 0
+  defp status_priority("degraded"), do: 1
+  defp status_priority("unknown"), do: 2
+  defp status_priority("online"), do: 3
+  defp status_priority(_), do: 4
+
+  defp last_seen_unix(nil), do: 0
+  defp last_seen_unix(%DateTime{} = ts), do: DateTime.to_unix(ts)
 
   defp build_status_counts(rows) do
     Enum.reduce(rows, %{all: 0, online: 0, degraded: 0, offline: 0, unknown: 0}, fn row, acc ->
