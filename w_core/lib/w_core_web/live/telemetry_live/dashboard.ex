@@ -180,6 +180,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="all"
+          aria-pressed={@status_filter == "all"}
           class={summary_card_class(@status_filter == "all", "zinc")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Nodes</p>
@@ -189,6 +190,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="online"
+          aria-pressed={@status_filter == "online"}
           class={summary_card_class(@status_filter == "online", "emerald")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Online</p>
@@ -198,6 +200,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="degraded"
+          aria-pressed={@status_filter == "degraded"}
           class={summary_card_class(@status_filter == "degraded", "amber")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Degraded</p>
@@ -207,6 +210,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="offline"
+          aria-pressed={@status_filter == "offline"}
           class={summary_card_class(@status_filter == "offline", "rose")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-rose-700 dark:text-rose-300">Offline</p>
@@ -216,6 +220,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="unknown"
+          aria-pressed={@status_filter == "unknown"}
           class={summary_card_class(@status_filter == "unknown", "indigo")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Others</p>
@@ -232,11 +237,11 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         <table class="w-full border-collapse text-left text-sm transition-opacity duration-150 group-data-[loading=true]:opacity-55">
           <thead class="border-b border-zinc-200 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
             <tr>
-              <th class="px-5 py-3.5 font-semibold"><.sort_button by="machine" current_by={@sort_by} current_dir={@sort_dir}>Machine</.sort_button></th>
-              <th class="px-5 py-3.5 font-semibold"><.sort_button by="location" current_by={@sort_by} current_dir={@sort_dir}>Location</.sort_button></th>
-              <th class="px-5 py-3.5 font-semibold"><.sort_button by="status" current_by={@sort_by} current_dir={@sort_dir}>Status</.sort_button></th>
-              <th class="px-5 py-3.5 font-semibold"><.sort_button by="events" current_by={@sort_by} current_dir={@sort_dir}>Events</.sort_button></th>
-              <th class="px-5 py-3.5 font-semibold"><.sort_button by="last_seen" current_by={@sort_by} current_dir={@sort_dir}>Last Seen</.sort_button></th>
+              <th aria-sort={aria_sort("machine", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="machine" current_by={@sort_by} current_dir={@sort_dir}>Machine</.sort_button></th>
+              <th aria-sort={aria_sort("location", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="location" current_by={@sort_by} current_dir={@sort_dir}>Location</.sort_button></th>
+              <th aria-sort={aria_sort("status", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="status" current_by={@sort_by} current_dir={@sort_dir}>Status</.sort_button></th>
+              <th aria-sort={aria_sort("events", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="events" current_by={@sort_by} current_dir={@sort_dir}>Events</.sort_button></th>
+              <th aria-sort={aria_sort("last_seen", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="last_seen" current_by={@sort_by} current_dir={@sort_dir}>Last Seen</.sort_button></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-zinc-200 text-zinc-800 dark:divide-zinc-800 dark:text-zinc-200">
@@ -627,6 +632,14 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> Kernel./(@auto_refresh_seconds)
 
     Float.round(@countdown_circumference * (1 - progress), 2)
+  end
+
+  defp aria_sort(by, current_by, current_dir) do
+    cond do
+      by != current_by -> "none"
+      current_dir == "desc" -> "descending"
+      true -> "ascending"
+    end
   end
 
   attr :by, :string, required: true

@@ -276,4 +276,43 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     refute html =~ "node-a"
     assert html =~ "Events ↓"
   end
+
+  test "exposes accessibility state for selected filter and sorted column", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+    ts = ~U[2026-04-05 12:00:00Z]
+
+    Telemetry.create_node(scope, %{machine_identifier: "node-a", location: "A"})
+    Telemetry.create_node(scope, %{machine_identifier: "node-b", location: "B"})
+    Ingester.ingest_event("node-b", "offline", %{}, ts)
+
+    Process.sleep(80)
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    assert has_element?(lv, "button[phx-value-status='all'][aria-pressed='true']")
+    assert has_element?(lv, "th[aria-sort='ascending'] button[phx-value-by='machine']")
+
+    lv
+    |> element("button[phx-value-status='offline']")
+    |> render_click()
+
+    assert has_element?(lv, "button[phx-value-status='offline'][aria-pressed='true']")
+    assert has_element?(lv, "button[phx-value-status='all'][aria-pressed='false']")
+
+    lv
+    |> element("button[phx-value-by='events']")
+    |> render_click()
+
+    assert has_element?(lv, "th[aria-sort='ascending'] button[phx-value-by='events']")
+
+    lv
+    |> element("button[phx-value-by='events']")
+    |> render_click()
+
+    assert has_element?(lv, "th[aria-sort='descending'] button[phx-value-by='events']")
+  end
 end
