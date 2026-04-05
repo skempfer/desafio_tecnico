@@ -136,8 +136,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         <div
           id="dashboard-connection-status"
           phx-hook="ConnectionStatus"
-          data-state="disconnected"
-          class="group flex flex-1 items-center justify-between rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+          data-state="connected"
+          class="group flex flex-1 items-center justify-between rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
         >
           <p class="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Connection</p>
           <p data-role="connection-label" role="status" aria-live="polite" class="inline-flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
@@ -148,7 +148,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           </p>
         </div>
 
-        <div class="flex flex-1 items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="flex flex-1 items-center justify-between gap-3 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <p class="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Next update in</p>
 
           <div class="relative size-10 shrink-0">
@@ -188,7 +188,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
               phx-debounce="300"
               placeholder="Search by machine or location"
               autocomplete="off"
-              class="w-full rounded-lg border border-zinc-300 bg-white py-2 pl-10 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+              class="w-full rounded-lg border border-zinc-300 bg-zinc-50 py-2 pl-10 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
             />
           </div>
           <button
@@ -267,15 +267,15 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         ]}
         aria-hidden={to_string(!has_selection?(@selected_ids, @select_all_pages))}
       >
-        <div class="flex items-center justify-between rounded-xl border border-indigo-500/30 bg-indigo-950/30 px-4 py-2.5 dark:border-indigo-500/20 dark:bg-indigo-900/20">
-          <span class="text-sm font-semibold text-indigo-300">
+        <div class="flex items-center justify-between rounded-xl border border-indigo-200 bg-white px-4 py-2.5 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-900/20">
+          <span class="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
             Selected: {selection_count(@selected_ids, @select_all_pages, @total_entries)}
           </span>
           <div class="flex items-center gap-2">
             <button
               type="button"
               phx-click="export_csv"
-              class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-600/20 px-3 py-1.5 text-xs font-semibold text-indigo-300 transition hover:bg-indigo-600/30 dark:border-indigo-500/30"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-transparent dark:text-indigo-300 dark:hover:bg-indigo-600/30"
             >
               <.icon name="hero-arrow-down-tray" class="size-3.5" />
               Export CSV
@@ -283,7 +283,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
             <button
               type="button"
               phx-click="clear_selection"
-              class="inline-flex items-center rounded-lg border border-zinc-600/40 bg-zinc-800/40 px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:bg-zinc-700/40 dark:border-zinc-600/30"
+              class="inline-flex items-center rounded-lg border border-zinc-300 bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-200 dark:border-zinc-600/30 dark:bg-zinc-800/40 dark:text-zinc-400 dark:hover:bg-zinc-700/40"
             >
               Clear selection
             </button>
@@ -295,10 +295,10 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         id="dashboard-results"
         phx-hook="DashboardLoading"
         data-loading="false"
-        class="group relative overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+        class="group relative overflow-x-auto rounded-xl border border-zinc-300 bg-zinc-50 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
       >
         <table class="w-full border-collapse text-left text-sm transition-opacity duration-150 group-data-[loading=true]:opacity-55">
-          <thead class="border-b border-zinc-200 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+          <thead class="border-b border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
             <tr>
               <th aria-sort={aria_sort("machine", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="machine" current_by={@sort_by} current_dir={@sort_dir}>Machine</.sort_button></th>
               <th aria-sort={aria_sort("location", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="location" current_by={@sort_by} current_dir={@sort_dir}>Location</.sort_button></th>
@@ -338,7 +338,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
             <tr
               :for={row <- @rows}
               id={"node-#{row.machine_identifier}"}
-              class="transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+              class="transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
             >
               <td class="px-5 py-3.5 font-medium">{row.machine_identifier}</td>
               <td class="px-5 py-3.5 text-zinc-600 dark:text-zinc-300">{row.location}</td>
@@ -363,8 +363,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           </tbody>
         </table>
 
-        <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/60 opacity-0 transition-opacity duration-150 group-data-[loading=true]:opacity-100 dark:bg-zinc-900/60">
-          <div class="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+        <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-zinc-50/75 opacity-0 transition-opacity duration-150 group-data-[loading=true]:opacity-100 dark:bg-zinc-900/60">
+          <div class="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
             <span class="size-2 rounded-full bg-indigo-500 animate-pulse" />
             Updating
           </div>
@@ -375,7 +375,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         <div class="hidden sm:block" />
 
         <div class="flex justify-center">
-          <div class="inline-flex items-center rounded-full border border-zinc-200 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+          <div class="inline-flex items-center rounded-full border border-zinc-300 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
             <button
               type="button"
               phx-click="prev_page"
@@ -870,7 +870,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
     case color do
       "zinc" ->
-        "#{base} border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+        "#{base} border-zinc-300 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
 
       "emerald" ->
         "#{base} border-emerald-200/70 bg-emerald-50/70 dark:border-emerald-800/50 dark:bg-emerald-900/20"
@@ -952,14 +952,21 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       type="button"
       phx-click="sort"
       phx-value-by={@by}
-      class="inline-flex items-center gap-1.5 font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
+      class="group inline-flex items-center gap-1.5 font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
     >
       {render_slot(@inner_block)}
       <span
         :if={@current_by == @by}
-        class="inline-flex size-5 items-center justify-center rounded-full bg-zinc-200 text-[11px] font-bold leading-none text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100"
+        class="inline-flex items-center justify-center text-sm font-bold leading-none text-zinc-600 dark:text-zinc-100"
       >
         {if @current_dir == "asc", do: "↑", else: "↓"}
+      </span>
+      <span
+        :if={@current_by != @by}
+        aria-hidden="true"
+        class="inline-flex items-center justify-center text-sm font-semibold leading-none text-zinc-600 transition-colors group-hover:text-zinc-900 dark:text-zinc-400 dark:group-hover:text-zinc-200"
+      >
+        ↕
       </span>
     </button>
     """

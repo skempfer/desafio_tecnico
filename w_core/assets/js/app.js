@@ -161,7 +161,7 @@ const ThemeToggle = {
     const current = localStorage.getItem("phx:theme") || "system"
     this.el.querySelectorAll("[data-theme-btn]").forEach(btn => {
       const isActive = btn.dataset.themeBtn === current
-      btn.classList.toggle("bg-white", isActive)
+      btn.classList.toggle("bg-zinc-100", isActive)
       btn.classList.toggle("dark:bg-zinc-600", isActive)
       btn.classList.toggle("text-zinc-900", isActive)
       btn.classList.toggle("dark:text-white", isActive)

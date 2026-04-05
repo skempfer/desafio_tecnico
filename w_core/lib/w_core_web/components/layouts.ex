@@ -42,10 +42,10 @@ defmodule WCoreWeb.Layouts do
   @spec app(term()) :: term()
   def app(assigns) do
     ~H"""
-    <header class="border-b border-zinc-200 px-4 sm:px-6 lg:px-8 dark:border-zinc-800">
+    <header class="border-b border-zinc-300/80 bg-white px-4 backdrop-blur-sm sm:px-6 lg:px-8 dark:border-zinc-800 dark:bg-transparent">
       <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 py-3">
         <div>
-          <h1 :if={@page_title} class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+          <h1 :if={@page_title} class="text-lg font-bold text-zinc-900 dark:text-zinc-100">
             {@page_title}
           </h1>
           <p :if={@page_subtitle} class="text-sm text-zinc-500 dark:text-zinc-400">
@@ -60,7 +60,7 @@ defmodule WCoreWeb.Layouts do
             <.link
               href={~p"/users/log-out"}
               method="delete"
-              class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
+              class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
             >
               Log out
             </.link>
@@ -136,14 +136,14 @@ defmodule WCoreWeb.Layouts do
     <div
       id="theme-toggle"
       phx-hook="ThemeToggle"
-      class="flex items-center gap-0.5 rounded-full border border-zinc-300 bg-zinc-100 p-1 dark:border-zinc-700 dark:bg-zinc-800"
+      class="flex items-center gap-0.5 rounded-full border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-800"
     >
       <.link
         :if={@current_scope && @current_scope.user}
         href={~p"/users/settings"}
         title="Settings"
         aria-label="Settings"
-        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-white"
       >
         <.icon name="hero-cog-6-tooth" class="size-4" />
       </.link>
@@ -157,7 +157,7 @@ defmodule WCoreWeb.Layouts do
         title="System"
         type="button"
         aria-label="System theme"
-        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-white"
       >
         <.icon name="hero-computer-desktop" class="size-4" />
       </button>
@@ -169,7 +169,7 @@ defmodule WCoreWeb.Layouts do
         title="Light"
         type="button"
         aria-label="Light theme"
-        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-white"
       >
         <.icon name="hero-sun" class="size-4" />
       </button>
@@ -181,7 +181,7 @@ defmodule WCoreWeb.Layouts do
         title="Dark"
         type="button"
         aria-label="Dark theme"
-        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-white"
       >
         <.icon name="hero-moon" class="size-4" />
       </button>
