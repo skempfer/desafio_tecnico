@@ -13,7 +13,9 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   @refresh_delay_ms 50
   @nodes_per_page 20
-  @auto_refresh_seconds 10
+  @default_auto_refresh_seconds 10
+  @min_auto_refresh_seconds 1
+  @max_auto_refresh_seconds 60
   @countdown_tick_ms 1_000
   @countdown_circumference 100.53
   @query_param_keys ~w(page q status sort_by sort_dir)
@@ -29,9 +31,11 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   """
 
   def mount(params, _session, socket) do
+    auto_refresh_seconds = auto_refresh_seconds()
+
     if connected?(socket) do
       Telemetry.subscribe_dashboard_updates()
-      schedule_auto_refresh()
+      schedule_auto_refresh(auto_refresh_seconds)
       schedule_countdown_tick()
     end
 
@@ -56,8 +60,9 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:status_counts, %{all: 0, online: 0, degraded: 0, offline: 0, unknown: 0})
       |> assign(:sort_by, "machine")
       |> assign(:sort_dir, "asc")
+      |> assign(:auto_refresh_seconds, auto_refresh_seconds)
       |> assign(:countdown_circumference, @countdown_circumference)
-      |> assign(:seconds_until_refresh, @auto_refresh_seconds)
+      |> assign(:seconds_until_refresh, auto_refresh_seconds)
       |> load_page(page)
 
     {:ok,
@@ -150,7 +155,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
                     stroke-width="4"
                     stroke-linecap="round"
                     stroke-dasharray={@countdown_circumference}
-                    stroke-dashoffset={countdown_offset(@seconds_until_refresh)}
+                    stroke-dashoffset={countdown_offset(@seconds_until_refresh, @auto_refresh_seconds)}
                   />
                 </svg>
                 <div id="dashboard-refresh-seconds" class="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
@@ -456,7 +461,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   @impl true
   def handle_info(:auto_refresh_page, socket) do
-    schedule_auto_refresh()
+    schedule_auto_refresh(socket.assigns.auto_refresh_seconds)
     {:noreply, load_page(socket, socket.assigns.page)}
   end
 
@@ -668,18 +673,32 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp mark_refreshed(socket) do
     socket
-    |> assign(:seconds_until_refresh, @auto_refresh_seconds)
+    |> assign(:seconds_until_refresh, socket.assigns.auto_refresh_seconds)
   end
 
-  defp countdown_offset(seconds_until_refresh) do
+  defp countdown_offset(seconds_until_refresh, auto_refresh_seconds) do
     progress =
       seconds_until_refresh
       |> max(0)
-      |> min(@auto_refresh_seconds)
-      |> Kernel./(@auto_refresh_seconds)
+      |> min(auto_refresh_seconds)
+      |> Kernel./(auto_refresh_seconds)
 
     Float.round(@countdown_circumference * (1 - progress), 2)
   end
+
+  defp auto_refresh_seconds do
+    :w_core
+    |> Application.get_env(:dashboard_auto_refresh_seconds, @default_auto_refresh_seconds)
+    |> normalize_auto_refresh_seconds()
+  end
+
+  defp normalize_auto_refresh_seconds(value) when is_integer(value) do
+    value
+    |> max(@min_auto_refresh_seconds)
+    |> min(@max_auto_refresh_seconds)
+  end
+
+  defp normalize_auto_refresh_seconds(_value), do: @default_auto_refresh_seconds
 
   defp aria_sort(by, current_by, current_dir) do
     cond do
@@ -713,8 +732,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     """
   end
 
-  defp schedule_auto_refresh do
-    Process.send_after(self(), :auto_refresh_page, @auto_refresh_seconds * @countdown_tick_ms)
+  defp schedule_auto_refresh(auto_refresh_seconds) do
+    Process.send_after(self(), :auto_refresh_page, auto_refresh_seconds * @countdown_tick_ms)
   end
 
   defp schedule_countdown_tick do

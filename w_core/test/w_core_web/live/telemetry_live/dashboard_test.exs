@@ -362,6 +362,36 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     assert has_element?(lv, "#dashboard-refresh-seconds", "10")
   end
 
+  test "uses configured auto refresh interval from app env", %{conn: conn} do
+    previous_value = Application.get_env(:w_core, :dashboard_auto_refresh_seconds)
+    Application.put_env(:w_core, :dashboard_auto_refresh_seconds, 3)
+
+    on_exit(fn ->
+      if is_nil(previous_value) do
+        Application.delete_env(:w_core, :dashboard_auto_refresh_seconds)
+      else
+        Application.put_env(:w_core, :dashboard_auto_refresh_seconds, previous_value)
+      end
+    end)
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user_fixture())
+      |> live(~p"/control-room")
+
+    assert has_element?(lv, "#dashboard-refresh-seconds", "3")
+
+    send(lv.pid, :countdown_tick)
+    _ = render(lv)
+
+    assert has_element?(lv, "#dashboard-refresh-seconds", "2")
+
+    send(lv.pid, :auto_refresh_page)
+    _ = render(lv)
+
+    assert has_element?(lv, "#dashboard-refresh-seconds", "3")
+  end
+
   test "auto refresh keeps the current page", %{conn: conn} do
     user = user_fixture()
     scope = Scope.for_user(user)
