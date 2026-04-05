@@ -37,13 +37,13 @@ defmodule WCoreWeb.Layouts do
   def app(assigns) do
     ~H"""
     <header class="border-b border-zinc-200 px-4 sm:px-6 lg:px-8 dark:border-zinc-800">
-      <div class="mx-auto flex max-w-6xl items-center justify-between py-4">
+      <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 py-4">
         <a href="/" class="flex w-fit items-center gap-2">
           <img src={~p"/images/logo.svg"} width="36" />
           <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">v{Application.spec(:phoenix, :vsn)}</span>
         </a>
-        <ul class="flex items-center gap-3">
-          <li>
+        <ul class="flex items-center gap-2 sm:gap-3">
+          <li class="hidden md:block">
             <a
               href="https://phoenixframework.org/"
               class="rounded-md px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
@@ -51,7 +51,7 @@ defmodule WCoreWeb.Layouts do
               Website
             </a>
           </li>
-          <li>
+          <li class="hidden md:block">
             <a
               href="https://github.com/phoenixframework/phoenix"
               class="rounded-md px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
@@ -59,10 +59,10 @@ defmodule WCoreWeb.Layouts do
               GitHub
             </a>
           </li>
-          <li>
+          <li class="sm:hidden">
             <.theme_toggle />
           </li>
-          <li>
+          <li class="hidden sm:block">
             <a
               href="https://hexdocs.pm/phoenix/overview.html"
               class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
@@ -74,7 +74,7 @@ defmodule WCoreWeb.Layouts do
       </div>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
+    <main class="px-4 pb-12 pt-6 sm:px-6 sm:pb-14 sm:pt-10 lg:px-8">
       <div class="mx-auto max-w-2xl space-y-4">
         {render_slot(@inner_block)}
       </div>

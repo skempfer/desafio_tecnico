@@ -58,10 +58,10 @@
     </script>
   </head>
   <body class="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-    <ul class="relative z-10 flex w-full items-center justify-end gap-3 border-b border-zinc-200 px-4 py-3 text-sm sm:px-6 lg:px-8 dark:border-zinc-800">
+    <ul class="relative z-10 flex w-full flex-wrap items-center justify-end gap-x-3 gap-y-2 border-b border-zinc-200 px-4 py-3 text-sm sm:px-6 lg:px-8 dark:border-zinc-800">
       <%= if @current_scope do %>
-        <li>
-          <span class="text-zinc-700 dark:text-zinc-300">{@current_scope.user.email}</span>
+        <li class="order-1 w-full sm:order-none sm:w-auto">
+          <span class="block max-w-[14rem] truncate text-zinc-700 dark:text-zinc-300">{@current_scope.user.email}</span>
         </li>
         <li>
           <.link href={~p"/users/settings"} class="font-medium text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-white">
@@ -85,7 +85,7 @@
           </.link>
         </li>
       <% end %>
-      <li>
+      <li class="hidden sm:block">
         <div class="flex items-center rounded-full border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
           <button type="button" class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800" onclick="window.dispatchEvent(new CustomEvent('phx:set-theme', { detail: { theme: 'system' } }));">
             <span class="sr-only">System theme</span>
