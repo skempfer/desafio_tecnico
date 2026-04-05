@@ -36,17 +36,17 @@ defmodule WCoreWeb.Layouts do
   @spec app(term()) :: term()
   def app(assigns) do
     ~H"""
-    <header class="border-b border-zinc-800 px-4 sm:px-6 lg:px-8">
+    <header class="border-b border-zinc-200 px-4 sm:px-6 lg:px-8 dark:border-zinc-800">
       <div class="mx-auto flex max-w-6xl items-center justify-between py-4">
         <a href="/" class="flex w-fit items-center gap-2">
           <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
+          <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">v{Application.spec(:phoenix, :vsn)}</span>
         </a>
         <ul class="flex items-center gap-3">
           <li>
             <a
               href="https://phoenixframework.org/"
-              class="rounded-md px-3 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white"
+              class="rounded-md px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
             >
               Website
             </a>
@@ -54,10 +54,13 @@ defmodule WCoreWeb.Layouts do
           <li>
             <a
               href="https://github.com/phoenixframework/phoenix"
-              class="rounded-md px-3 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white"
+              class="rounded-md px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
             >
               GitHub
             </a>
+          </li>
+          <li>
+            <.theme_toggle />
           </li>
           <li>
             <a
@@ -131,35 +134,35 @@ defmodule WCoreWeb.Layouts do
   @spec theme_toggle(term()) :: term()
   def theme_toggle(assigns) do
     ~H"""
-    <div class="flex items-center rounded-full border border-zinc-700 bg-zinc-900 p-1">
+    <div class="flex items-center rounded-full border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
       <button
-        class="rounded-full p-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+        class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="system"
         title="System"
         type="button"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4" />
+        SYS
       </button>
 
       <button
-        class="rounded-full p-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+        class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="light"
         title="Light"
         type="button"
       >
-        <.icon name="hero-sun-micro" class="size-4" />
+        LGT
       </button>
 
       <button
-        class="rounded-full p-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+        class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="dark"
         title="Dark"
         type="button"
       >
-        <.icon name="hero-moon-micro" class="size-4" />
+        DRK
       </button>
     </div>
     """

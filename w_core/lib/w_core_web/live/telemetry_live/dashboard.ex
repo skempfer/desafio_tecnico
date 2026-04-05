@@ -50,9 +50,9 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         <:subtitle>Real-time machine heartbeat overview</:subtitle>
       </.header>
 
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <table class="w-full border-collapse text-left text-sm">
-          <thead class="border-b border-zinc-700 text-zinc-300">
+          <thead class="border-b border-zinc-200 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
             <tr>
               <th class="px-4 py-3 font-semibold">Machine</th>
               <th class="px-4 py-3 font-semibold">Location</th>
@@ -61,11 +61,11 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
               <th class="px-4 py-3 font-semibold">Last Seen</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-zinc-800 text-zinc-200">
+          <tbody class="divide-y divide-zinc-200 text-zinc-800 dark:divide-zinc-800 dark:text-zinc-200">
             <tr
               :for={row <- @rows}
               id={"node-#{row.machine_identifier}"}
-              class="hover:bg-zinc-900/50"
+              class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
             >
               <td class="px-4 py-3">{row.machine_identifier}</td>
               <td class="px-4 py-3">{row.location}</td>

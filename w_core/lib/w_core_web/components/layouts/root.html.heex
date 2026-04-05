@@ -12,44 +12,95 @@
     </script>
     <script>
       (() => {
+        const media = window.matchMedia("(prefers-color-scheme: dark)");
+
+        const resolveTheme = (theme) => {
+          if (theme === "system") {
+            return media.matches ? "dark" : "light";
+          }
+
+          return theme;
+        };
+
         const setTheme = (theme) => {
           if (theme === "system") {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.removeAttribute("data-theme");
+            localStorage.setItem("phx:theme", "system");
           } else {
             localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
           }
+
+          document.documentElement.setAttribute("data-theme", resolveTheme(theme));
         };
+
+        const currentPreference = () => localStorage.getItem("phx:theme") || "system";
+
         if (!document.documentElement.hasAttribute("data-theme")) {
-          setTheme(localStorage.getItem("phx:theme") || "system");
+          setTheme(currentPreference());
         }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+
+        media.addEventListener("change", () => {
+          if (currentPreference() === "system") {
+            setTheme("system");
+          }
+        });
+
+        window.addEventListener("storage", (e) => {
+          if (e.key === "phx:theme") {
+            setTheme(e.newValue || "system");
+          }
+        });
+
+        window.addEventListener("phx:set-theme", (e) => {
+          const theme = e.detail?.theme || e.target?.dataset?.phxTheme || "system";
+          setTheme(theme);
+        });
       })();
     </script>
   </head>
-  <body>
-    <ul class="menu menu-horizontal w-full relative z-10 flex items-center gap-4 px-4 sm:px-6 lg:px-8 justify-end">
+  <body class="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <ul class="relative z-10 flex w-full items-center justify-end gap-3 border-b border-zinc-200 px-4 py-3 text-sm sm:px-6 lg:px-8 dark:border-zinc-800">
       <%= if @current_scope do %>
         <li>
-          {@current_scope.user.email}
+          <span class="text-zinc-700 dark:text-zinc-300">{@current_scope.user.email}</span>
         </li>
         <li>
-          <.link href={~p"/users/settings"}>Settings</.link>
+          <.link href={~p"/users/settings"} class="font-medium text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-white">
+            Settings
+          </.link>
         </li>
         <li>
-          <.link href={~p"/users/log-out"} method="delete">Log out</.link>
+          <.link href={~p"/users/log-out"} method="delete" class="font-medium text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-white">
+            Log out
+          </.link>
         </li>
       <% else %>
         <li>
-          <.link href={~p"/users/register"}>Register</.link>
+          <.link href={~p"/users/register"} class="font-medium text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-white">
+            Register
+          </.link>
         </li>
         <li>
-          <.link href={~p"/users/log-in"}>Log in</.link>
+          <.link href={~p"/users/log-in"} class="font-medium text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-white">
+            Log in
+          </.link>
         </li>
       <% end %>
+      <li>
+        <div class="flex items-center rounded-full border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
+          <button type="button" class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800" onclick="window.dispatchEvent(new CustomEvent('phx:set-theme', { detail: { theme: 'system' } }));">
+            <span class="sr-only">System theme</span>
+            SYS
+          </button>
+          <button type="button" class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800" onclick="window.dispatchEvent(new CustomEvent('phx:set-theme', { detail: { theme: 'light' } }));">
+            <span class="sr-only">Light theme</span>
+            LGT
+          </button>
+          <button type="button" class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800" onclick="window.dispatchEvent(new CustomEvent('phx:set-theme', { detail: { theme: 'dark' } }));">
+            <span class="sr-only">Dark theme</span>
+            DRK
+          </button>
+        </div>
+      </li>
     </ul>
     {@inner_content}
   </body>
