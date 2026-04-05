@@ -153,7 +153,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
                     stroke-dashoffset={countdown_offset(@seconds_until_refresh)}
                   />
                 </svg>
-                <div class="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
+                <div id="dashboard-refresh-seconds" class="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
                   {@seconds_until_refresh}
                 </div>
               </div>

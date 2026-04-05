@@ -342,4 +342,46 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     assert html =~ "2 / 2"
     assert_patch(lv, ~p"/control-room?page=2")
   end
+
+  test "countdown decreases on tick and resets after auto refresh", %{conn: conn} do
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user_fixture())
+      |> live(~p"/control-room")
+
+    assert has_element?(lv, "#dashboard-refresh-seconds", "10")
+
+    send(lv.pid, :countdown_tick)
+    _ = render(lv)
+
+    assert has_element?(lv, "#dashboard-refresh-seconds", "9")
+
+    send(lv.pid, :auto_refresh_page)
+    _ = render(lv)
+
+    assert has_element?(lv, "#dashboard-refresh-seconds", "10")
+  end
+
+  test "auto refresh keeps the current page", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Enum.each(1..25, fn i ->
+      machine_identifier = "sensor-#{String.pad_leading(Integer.to_string(i), 2, "0")}"
+      Telemetry.create_node(scope, %{machine_identifier: machine_identifier, location: "lab"})
+    end)
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room?page=2")
+
+    assert has_element?(lv, "div", "2 / 2")
+
+    send(lv.pid, :auto_refresh_page)
+    _ = render(lv)
+
+    assert has_element?(lv, "div", "2 / 2")
+    assert has_element?(lv, "td", "sensor-21")
+  end
 end
