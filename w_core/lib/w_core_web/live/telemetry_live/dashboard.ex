@@ -63,7 +63,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:auto_refresh_seconds, auto_refresh_seconds)
       |> assign(:countdown_circumference, @countdown_circumference)
       |> assign(:seconds_until_refresh, auto_refresh_seconds)
-      |> load_page(page)
+      |> load_page(page, :mount)
 
     {:ok,
      socket}
@@ -90,7 +90,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         |> assign(:status_filter, status_filter)
         |> assign(:sort_by, sort_by)
         |> assign(:sort_dir, sort_dir)
-        |> load_page(page)
+        |> load_page(page, :params)
       end
 
     incoming_query_params =
@@ -106,6 +106,12 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     if incoming_query_params == canonical_query_params do
       {:noreply, socket}
     else
+      emit_telemetry(
+        [:w_core, :dashboard, :params_canonicalized],
+        %{count: 1},
+        %{route: "/control-room"}
+      )
+
       {:noreply, push_patch(socket, to: ~p"/control-room?#{canonical_query_params}", replace: true)}
     end
   end
@@ -435,6 +441,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   @impl true
   def handle_info(:refresh_pending_nodes, socket) do
+    started_at = System.monotonic_time()
+    pending_count = MapSet.size(socket.assigns.pending_node_ids)
     scope = socket.assigns.current_scope
 
     refreshed_rows_by_machine_id =
@@ -451,6 +459,17 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         Map.get(refreshed_rows_by_machine_id, row.machine_identifier, row)
       end)
 
+    emit_telemetry(
+      [:w_core, :dashboard, :refresh_pending_nodes],
+      %{
+        duration: System.monotonic_time() - started_at
+      },
+      %{
+        pending_count: pending_count,
+        refreshed_count: map_size(refreshed_rows_by_machine_id)
+      }
+    )
+
     {:noreply,
      socket
      |> assign(:rows, rows)
@@ -461,8 +480,14 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   @impl true
   def handle_info(:auto_refresh_page, socket) do
+    emit_telemetry(
+      [:w_core, :dashboard, :auto_refresh],
+      %{count: 1},
+      %{page: socket.assigns.page}
+    )
+
     schedule_auto_refresh(socket.assigns.auto_refresh_seconds)
-    {:noreply, load_page(socket, socket.assigns.page)}
+    {:noreply, load_page(socket, socket.assigns.page, :auto_refresh)}
   end
 
   @impl true
@@ -574,7 +599,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     end)
   end
 
-  defp load_page(socket, requested_page) do
+  defp load_page(socket, requested_page, source) do
+    started_at = System.monotonic_time()
     scope = socket.assigns.current_scope
 
     page_data =
@@ -597,19 +623,43 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> Enum.map(& &1.machine_identifier)
       |> MapSet.new()
 
+    socket =
+      socket
+      |> assign(:rows, page_data.entries)
+      |> assign(:page, page_data.page)
+      |> assign(:per_page, page_data.per_page)
+      |> assign(:total_entries, page_data.total_entries)
+      |> assign(:total_pages, page_data.total_pages)
+      |> assign(:has_prev, page_data.has_prev)
+      |> assign(:has_next, page_data.has_next)
+      |> assign(:status_counts, page_data.status_counts)
+      |> assign(:visible_node_ids, visible_node_ids)
+      |> assign(:pending_node_ids, MapSet.new())
+      |> assign(:refresh_timer_ref, nil)
+      |> mark_refreshed()
+
+    emit_telemetry(
+      [:w_core, :dashboard, :load_page],
+      %{
+        duration: System.monotonic_time() - started_at
+      },
+      %{
+        source: source,
+        page: page_data.page,
+        per_page: page_data.per_page,
+        total_entries: page_data.total_entries,
+        has_search: socket.assigns.search_query != "",
+        status_filter: socket.assigns.status_filter,
+        sort_by: socket.assigns.sort_by,
+        sort_dir: socket.assigns.sort_dir
+      }
+    )
+
     socket
-    |> assign(:rows, page_data.entries)
-    |> assign(:page, page_data.page)
-    |> assign(:per_page, page_data.per_page)
-    |> assign(:total_entries, page_data.total_entries)
-    |> assign(:total_pages, page_data.total_pages)
-    |> assign(:has_prev, page_data.has_prev)
-    |> assign(:has_next, page_data.has_next)
-    |> assign(:status_counts, page_data.status_counts)
-    |> assign(:visible_node_ids, visible_node_ids)
-    |> assign(:pending_node_ids, MapSet.new())
-    |> assign(:refresh_timer_ref, nil)
-    |> mark_refreshed()
+  end
+
+  defp emit_telemetry(event, measurements, metadata) do
+    :telemetry.execute(event, measurements, metadata)
   end
 
   defp summary_card_class(true, color) do
