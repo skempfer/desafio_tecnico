@@ -210,5 +210,31 @@ defmodule WCore.TelemetryTest do
       assert length(page_location.entries) == 1
       assert hd(page_location.entries).location == "South Bay"
     end
+
+    test "list_nodes_with_hot_state_paginated/2 filters by status and keeps counts" do
+      scope = user_scope_fixture()
+
+      node_fixture(scope, %{machine_identifier: "reactor-online", location: "A"})
+      node_fixture(scope, %{machine_identifier: "reactor-offline", location: "B"})
+      node_fixture(scope, %{machine_identifier: "reactor-unknown", location: "C"})
+
+      ts = ~U[2026-04-04 15:00:00Z]
+      WCore.Telemetry.Cache.put("reactor-online", "online", %{}, ts)
+      WCore.Telemetry.Cache.put("reactor-offline", "offline", %{}, ts)
+
+      page = Telemetry.list_nodes_with_hot_state_paginated(scope, status: "offline")
+
+      assert page.total_entries == 1
+      assert length(page.entries) == 1
+      assert hd(page.entries).machine_identifier == "reactor-offline"
+      assert page.status_counts.all == 3
+      assert page.status_counts.online == 1
+      assert page.status_counts.offline == 1
+      assert page.status_counts.unknown == 1
+
+      page_others = Telemetry.list_nodes_with_hot_state_paginated(scope, status: "others")
+      assert page_others.total_entries == 1
+      assert hd(page_others.entries).machine_identifier == "reactor-unknown"
+    end
   end
 end

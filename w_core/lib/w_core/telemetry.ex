@@ -43,7 +43,14 @@ defmodule WCore.Telemetry do
           total_entries: non_neg_integer(),
           total_pages: pos_integer(),
           has_prev: boolean(),
-          has_next: boolean()
+          has_next: boolean(),
+          status_counts: %{
+            all: non_neg_integer(),
+            online: non_neg_integer(),
+            degraded: non_neg_integer(),
+            offline: non_neg_integer(),
+            unknown: non_neg_integer()
+          }
         }
 
   @default_nodes_per_page 20
@@ -65,11 +72,13 @@ defmodule WCore.Telemetry do
     * `:page` - page number, defaults to `1`
     * `:per_page` - page size, defaults to `20` and caps at `100`
     * `:search` - optional case-insensitive filter on machine identifier and location
+    * `:status` - optional status filter (`"all"`, `"online"`, `"degraded"`, `"offline"`, `"unknown"`)
   """
   @spec list_nodes_with_hot_state_paginated(Scope.t(), keyword()) :: hot_state_page()
   def list_nodes_with_hot_state_paginated(%Scope{} = scope, opts \\ []) do
     requested_page = normalize_positive_int(Keyword.get(opts, :page), 1)
     search = opts |> Keyword.get(:search, "") |> normalize_search_query()
+    status_filter = opts |> Keyword.get(:status, "all") |> normalize_status_filter()
 
     per_page =
       opts
@@ -77,19 +86,27 @@ defmodule WCore.Telemetry do
       |> normalize_positive_int(@default_nodes_per_page)
       |> min(@max_nodes_per_page)
 
-    base_query = scoped_nodes_query(scope, search)
-    total_entries = Repo.aggregate(base_query, :count, :id)
+    hot_rows =
+      scope
+      |> scoped_nodes_query(search)
+      |> Repo.all()
+      |> Enum.sort_by(& &1.machine_identifier)
+      |> Enum.map(&to_hot_row/1)
+
+    status_counts = build_status_counts(hot_rows)
+
+    filtered_rows =
+      case status_filter do
+        "all" -> hot_rows
+        status -> Enum.filter(hot_rows, &(&1.status == status))
+      end
+
+    total_entries = length(filtered_rows)
     total_pages = max(1, div(total_entries + per_page - 1, per_page))
     page = min(requested_page, total_pages)
     offset = (page - 1) * per_page
 
-    entries =
-      base_query
-      |> order_by([n], asc: n.machine_identifier)
-      |> limit(^per_page)
-      |> offset(^offset)
-      |> Repo.all()
-      |> Enum.map(&to_hot_row/1)
+    entries = Enum.slice(filtered_rows, offset, per_page)
 
     %{
       entries: entries,
@@ -98,7 +115,8 @@ defmodule WCore.Telemetry do
       total_entries: total_entries,
       total_pages: total_pages,
       has_prev: page > 1,
-      has_next: page < total_pages
+      has_next: page < total_pages,
+      status_counts: status_counts
     }
   end
 
@@ -147,6 +165,33 @@ defmodule WCore.Telemetry do
   end
 
   defp normalize_search_query(_search), do: ""
+
+  defp normalize_status_filter(status) when is_binary(status) do
+    case String.downcase(String.trim(status)) do
+      "online" -> "online"
+      "degraded" -> "degraded"
+      "offline" -> "offline"
+      "unknown" -> "unknown"
+      "other" -> "unknown"
+      "others" -> "unknown"
+      _ -> "all"
+    end
+  end
+
+  defp normalize_status_filter(_status), do: "all"
+
+  defp build_status_counts(rows) do
+    Enum.reduce(rows, %{all: 0, online: 0, degraded: 0, offline: 0, unknown: 0}, fn row, acc ->
+      acc
+      |> Map.update!(:all, &(&1 + 1))
+      |> increment_status_bucket(row.status)
+    end)
+  end
+
+  defp increment_status_bucket(acc, "online"), do: Map.update!(acc, :online, &(&1 + 1))
+  defp increment_status_bucket(acc, "degraded"), do: Map.update!(acc, :degraded, &(&1 + 1))
+  defp increment_status_bucket(acc, "offline"), do: Map.update!(acc, :offline, &(&1 + 1))
+  defp increment_status_bucket(acc, _), do: Map.update!(acc, :unknown, &(&1 + 1))
 
   defp scoped_nodes_query(%Scope{} = scope, "") do
     from(n in Node, where: n.user_id == ^scope.user.id)

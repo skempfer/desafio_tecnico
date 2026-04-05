@@ -129,4 +129,55 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     assert html =~ "South Bay"
     assert html =~ "sensor-21"
   end
+
+  test "status cards filter rows and total card restores full list", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Telemetry.create_node(scope, %{machine_identifier: "reactor-online", location: "A"})
+    Telemetry.create_node(scope, %{machine_identifier: "reactor-offline", location: "B"})
+    Telemetry.create_node(scope, %{machine_identifier: "reactor-unknown", location: "C"})
+
+    ts = ~U[2026-04-04 16:00:00Z]
+    Ingester.ingest_event("reactor-online", "online", %{}, ts)
+    Ingester.ingest_event("reactor-offline", "offline", %{}, ts)
+
+    Process.sleep(80)
+
+    {:ok, lv, html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    assert html =~ "Showing 3 of 3 machines"
+
+    html =
+      lv
+      |> element("button[phx-value-status='offline']")
+      |> render_click()
+
+    assert html =~ "Showing 1 of 1 machines"
+    assert html =~ "reactor-offline"
+    refute html =~ "reactor-online"
+
+    html =
+      lv
+      |> element("button[phx-value-status='unknown']")
+      |> render_click()
+
+    assert html =~ "Showing 1 of 1 machines"
+    assert html =~ "reactor-unknown"
+    refute html =~ "reactor-online"
+    refute html =~ "reactor-offline"
+
+    html =
+      lv
+      |> element("button[phx-value-status='all']")
+      |> render_click()
+
+    assert html =~ "Showing 3 of 3 machines"
+    assert html =~ "reactor-online"
+    assert html =~ "reactor-offline"
+    assert html =~ "reactor-unknown"
+  end
 end

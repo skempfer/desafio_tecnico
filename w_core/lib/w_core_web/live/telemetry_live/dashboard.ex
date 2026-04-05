@@ -51,6 +51,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:has_next, false)
       |> assign(:visible_node_ids, MapSet.new())
       |> assign(:search_query, search_query)
+      |> assign(:status_filter, "all")
+      |> assign(:status_counts, %{all: 0, online: 0, degraded: 0, offline: 0, unknown: 0})
       |> assign(:countdown_circumference, @countdown_circumference)
       |> assign(:seconds_until_refresh, @auto_refresh_seconds)
       |> load_page(page)
@@ -127,23 +129,52 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         </form>
       </section>
 
-      <section class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <section class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="all"
+          class={summary_card_class(@status_filter == "all", "zinc")}
+        >
           <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Nodes</p>
-          <p class="mt-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">{@total_entries}</p>
-        </div>
-        <div class="rounded-xl border border-emerald-200/70 bg-emerald-50/70 p-4 shadow-sm dark:border-emerald-800/50 dark:bg-emerald-900/20">
+          <p class="mt-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">{@status_counts.all}</p>
+        </button>
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="online"
+          class={summary_card_class(@status_filter == "online", "emerald")}
+        >
           <p class="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Online</p>
-          <p class="mt-2 text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{count_by_status(@rows, "online")}</p>
-        </div>
-        <div class="rounded-xl border border-amber-200/70 bg-amber-50/70 p-4 shadow-sm dark:border-amber-800/50 dark:bg-amber-900/20">
+          <p class="mt-2 text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{@status_counts.online}</p>
+        </button>
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="degraded"
+          class={summary_card_class(@status_filter == "degraded", "amber")}
+        >
           <p class="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Degraded</p>
-          <p class="mt-2 text-2xl font-semibold text-amber-900 dark:text-amber-200">{count_by_status(@rows, "degraded")}</p>
-        </div>
-        <div class="rounded-xl border border-rose-200/70 bg-rose-50/70 p-4 shadow-sm dark:border-rose-800/50 dark:bg-rose-900/20">
+          <p class="mt-2 text-2xl font-semibold text-amber-900 dark:text-amber-200">{@status_counts.degraded}</p>
+        </button>
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="offline"
+          class={summary_card_class(@status_filter == "offline", "rose")}
+        >
           <p class="text-xs font-medium uppercase tracking-wide text-rose-700 dark:text-rose-300">Offline</p>
-          <p class="mt-2 text-2xl font-semibold text-rose-900 dark:text-rose-200">{count_by_status(@rows, "offline")}</p>
-        </div>
+          <p class="mt-2 text-2xl font-semibold text-rose-900 dark:text-rose-200">{@status_counts.offline}</p>
+        </button>
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="unknown"
+          class={summary_card_class(@status_filter == "unknown", "indigo")}
+        >
+          <p class="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Others</p>
+          <p class="mt-2 text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{@status_counts.unknown}</p>
+        </button>
       </section>
 
       <div class="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -225,6 +256,14 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   @impl true
   def handle_event("next_page", _params, socket) do
     {:noreply, load_page(socket, socket.assigns.page + 1)}
+  end
+
+  @impl true
+  def handle_event("set_status_filter", %{"status" => status}, socket) do
+    {:noreply,
+     socket
+     |> assign(:status_filter, normalize_status_filter(status))
+     |> load_page(1)}
   end
 
   @impl true
@@ -340,6 +379,20 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp parse_search_query(_), do: ""
 
+  defp normalize_status_filter(status) when is_binary(status) do
+    case String.downcase(String.trim(status)) do
+      "online" -> "online"
+      "degraded" -> "degraded"
+      "offline" -> "offline"
+      "unknown" -> "unknown"
+      "other" -> "unknown"
+      "others" -> "unknown"
+      _ -> "all"
+    end
+  end
+
+  defp normalize_status_filter(_status), do: "all"
+
   defp load_page(socket, requested_page) do
     scope = socket.assigns.current_scope
 
@@ -348,7 +401,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         scope,
         page: requested_page,
         per_page: @nodes_per_page,
-        search: socket.assigns.search_query
+        search: socket.assigns.search_query,
+        status: socket.assigns.status_filter
       )
 
     if socket.assigns.refresh_timer_ref do
@@ -368,14 +422,55 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     |> assign(:total_pages, page_data.total_pages)
     |> assign(:has_prev, page_data.has_prev)
     |> assign(:has_next, page_data.has_next)
+    |> assign(:status_counts, page_data.status_counts)
     |> assign(:visible_node_ids, visible_node_ids)
     |> assign(:pending_node_ids, MapSet.new())
     |> assign(:refresh_timer_ref, nil)
     |> mark_refreshed()
   end
 
-  defp count_by_status(rows, status) do
-    Enum.count(rows, &(&1.status == status))
+  defp summary_card_class(true, color) do
+    base =
+      "rounded-xl border p-4 text-left shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/40 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+
+    case color do
+      "zinc" ->
+        "#{base} border-zinc-300 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800"
+
+      "emerald" ->
+        "#{base} border-emerald-300 bg-emerald-100 dark:border-emerald-700/60 dark:bg-emerald-900/35"
+
+      "amber" ->
+        "#{base} border-amber-300 bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/35"
+
+      "rose" ->
+        "#{base} border-rose-300 bg-rose-100 dark:border-rose-700/60 dark:bg-rose-900/35"
+
+      _ ->
+        "#{base} border-indigo-300 bg-indigo-100 dark:border-indigo-700/60 dark:bg-indigo-900/35"
+    end
+  end
+
+  defp summary_card_class(false, color) do
+    base =
+      "rounded-xl border p-4 text-left shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/30 hover:brightness-110"
+
+    case color do
+      "zinc" ->
+        "#{base} border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+
+      "emerald" ->
+        "#{base} border-emerald-200/70 bg-emerald-50/70 dark:border-emerald-800/50 dark:bg-emerald-900/20"
+
+      "amber" ->
+        "#{base} border-amber-200/70 bg-amber-50/70 dark:border-amber-800/50 dark:bg-amber-900/20"
+
+      "rose" ->
+        "#{base} border-rose-200/70 bg-rose-50/70 dark:border-rose-800/50 dark:bg-rose-900/20"
+
+      _ ->
+        "#{base} border-indigo-200/70 bg-indigo-50/70 dark:border-indigo-800/50 dark:bg-indigo-900/20"
+    end
   end
 
   defp empty_state_text(""), do: "No telemetry nodes found for this account yet."
