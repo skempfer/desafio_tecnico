@@ -8,8 +8,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   use WCoreWeb, :live_view
 
-  alias WCore.Telemetry
   alias MapSet
+  alias WCore.Telemetry
 
   @refresh_delay_ms 50
   @nodes_per_page 20
@@ -208,7 +208,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="all"
-          aria-pressed={@status_filter == "all"}
+          aria-pressed={aria_pressed(@status_filter == "all")}
           class={summary_card_class(@status_filter == "all", "zinc")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Nodes</p>
@@ -218,7 +218,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="online"
-          aria-pressed={@status_filter == "online"}
+          aria-pressed={aria_pressed(@status_filter == "online")}
           class={summary_card_class(@status_filter == "online", "emerald")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Online</p>
@@ -228,7 +228,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="degraded"
-          aria-pressed={@status_filter == "degraded"}
+          aria-pressed={aria_pressed(@status_filter == "degraded")}
           class={summary_card_class(@status_filter == "degraded", "amber")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Degraded</p>
@@ -238,7 +238,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="offline"
-          aria-pressed={@status_filter == "offline"}
+          aria-pressed={aria_pressed(@status_filter == "offline")}
           class={summary_card_class(@status_filter == "offline", "rose")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-rose-700 dark:text-rose-300">Offline</p>
@@ -248,7 +248,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           type="button"
           phx-click="set_status_filter"
           phx-value-status="unknown"
-          aria-pressed={@status_filter == "unknown"}
+          aria-pressed={aria_pressed(@status_filter == "unknown")}
           class={summary_card_class(@status_filter == "unknown", "indigo")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Others</p>
@@ -757,6 +757,9 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       true -> "ascending"
     end
   end
+
+  defp aria_pressed(true), do: "true"
+  defp aria_pressed(false), do: "false"
 
   attr :by, :string, required: true
   attr :current_by, :string, required: true

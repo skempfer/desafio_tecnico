@@ -3,9 +3,9 @@ defmodule WCore.TelemetryComponentsTest do
   import Phoenix.LiveViewTest
   import WCoreWeb.TelemetryComponents
 
-  test "status_badge renders degraded varuant" do
+  test "status_badge renders degraded variant" do
     html = render_component(&status_badge/1, status: "degraded")
-    assert html =~ "degraded"
+    assert html =~ "DEGRADED"
     assert html =~ "amber"
   end
 end

@@ -28,6 +28,39 @@ The goal of this step is to expose live telemetry data through an interactive, a
 - Quality hardening:
   - `make quality` passing (format, credo, dialyzer, tests, sobelow)
 
+## Incremental Improvements After Initial Delivery
+
+The Control Room was incrementally improved to close UX, reliability, accessibility,
+and observability gaps identified during manual validation.
+
+- Dashboard interaction UX:
+  - Backend pagination with URL state synchronization (`page`, `q`, `status`, `sort_by`, `sort_dir`)
+  - Search with debounce by machine identifier and location
+  - Sort controls with persistent state and URL canonicalization
+  - Clickable status summary cards (`all`, `online`, `degraded`, `offline`, `unknown`)
+- Empty-state guidance:
+  - Contextual empty messages for search/filter combinations
+  - Quick `Reset filters` action in empty state when filters are active
+- Auto-refresh and feedback:
+  - Countdown ring with deterministic selector (`#dashboard-refresh-seconds`)
+  - Configurable refresh interval through app env:
+    - `config :w_core, :dashboard_auto_refresh_seconds, <seconds>`
+    - Safe clamp range: `1..60` seconds, default `10`
+  - Auto-refresh keeps current pagination context
+- Accessibility improvements:
+  - Filter cards expose state with `aria-pressed`
+  - Sortable headers expose state with `aria-sort`
+  - Connection label uses polite live-region semantics (`role=status`, `aria-live=polite`)
+- Frontend hook resilience:
+  - `ConnectionStatus` reacts to LiveView and browser online/offline events
+  - `DashboardLoading` tracks concurrent loading events and includes fallback timeout
+- Observability:
+  - Telemetry events added for dashboard operations:
+    - `w_core.dashboard.load_page.duration`
+    - `w_core.dashboard.refresh_pending_nodes.duration`
+    - `w_core.dashboard.auto_refresh.count`
+    - `w_core.dashboard.params_canonicalized.count`
+
 ## Prerequisites
 
 - Elixir 1.15+
@@ -96,6 +129,19 @@ WCore.Telemetry.Ingester.ingest_event("reactor_3", "offline", %{}, DateTime.utc_
 
 ```bash
 make quality
+```
+
+### Windows Runtime Note (LiveView Tests)
+
+When running LiveView tests on Windows, the `lazy_html` NIF must match the
+active OTP runtime version. In this workspace, tests are stable with OTP 27.
+
+Example (temporary shell PATH override):
+
+```bash
+export PATH="/c/Users/shana/AppData/Local/mise/installs/erlang/27.3.4.9/bin:/c/Users/shana/AppData/Local/mise/installs/elixir/1.18.4-otp-27/bin:$PATH"
+elixir --version
+mix test
 ```
 
 ## Key Files & Directories

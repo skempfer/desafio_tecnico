@@ -6,10 +6,10 @@ defmodule WCore.Telemetry do
   import Ecto.Query, warn: false
   alias WCore.Accounts.Scope
   alias WCore.Repo
+  alias WCore.Telemetry.Cache
   alias WCore.Telemetry.Node
   alias WCore.Telemetry.NodeMetrics
   alias WCore.Telemetry.TelemetryEvent
-  alias WCore.Telemetry.Cache
 
   @typedoc "Unique machine identifier used as the cache and routing key for telemetry nodes."
   @type node_id :: String.t()
@@ -209,20 +209,31 @@ defmodule WCore.Telemetry do
   defp normalize_sort_dir(_sort_dir), do: "asc"
 
   defp sort_rows(rows, sort_by, sort_dir) do
-    sorter =
-      case sort_by do
-        "location" -> &{String.downcase(&1.location || ""), String.downcase(&1.machine_identifier)}
-        "status" -> &{String.downcase(&1.status || ""), String.downcase(&1.machine_identifier)}
-        "events" -> &{&1.total_events_processed || 0, String.downcase(&1.machine_identifier)}
-        "last_seen" -> &{normalize_last_seen(&1.last_seen_at), String.downcase(&1.machine_identifier)}
-        _ -> &{String.downcase(&1.machine_identifier), String.downcase(&1.location || "")}
-      end
-
-    case sort_dir do
-      "desc" -> Enum.sort_by(rows, sorter, :desc)
-      _ -> Enum.sort_by(rows, sorter, :asc)
-    end
+    Enum.sort_by(rows, &sort_key(&1, sort_by), sort_direction(sort_dir))
   end
+
+  defp sort_key(row, "location") do
+    {String.downcase(row.location || ""), String.downcase(row.machine_identifier)}
+  end
+
+  defp sort_key(row, "status") do
+    {String.downcase(row.status || ""), String.downcase(row.machine_identifier)}
+  end
+
+  defp sort_key(row, "events") do
+    {row.total_events_processed || 0, String.downcase(row.machine_identifier)}
+  end
+
+  defp sort_key(row, "last_seen") do
+    {normalize_last_seen(row.last_seen_at), String.downcase(row.machine_identifier)}
+  end
+
+  defp sort_key(row, _sort_by) do
+    {String.downcase(row.machine_identifier), String.downcase(row.location || "")}
+  end
+
+  defp sort_direction("desc"), do: :desc
+  defp sort_direction(_sort_dir), do: :asc
 
   defp normalize_last_seen(nil), do: ~U[1970-01-01 00:00:00Z]
   defp normalize_last_seen(ts), do: ts

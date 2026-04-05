@@ -170,7 +170,13 @@ defmodule WCore.AccountsTest do
     end
 
     test "does not update email if token expired", %{user: user, token: token} do
-      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00]])
+      {:ok, query} = UserToken.verify_change_email_token_query(token, "change:#{user.email}")
+      token_record = Repo.one!(query)
+
+      {1, nil} =
+        Repo.update_all(from(t in UserToken, where: t.id == ^token_record.id),
+          set: [inserted_at: ~N[2020-01-01 00:00:00]]
+        )
 
       assert Accounts.update_user_email(user, token) ==
                {:error, :transaction_aborted}
@@ -302,7 +308,11 @@ defmodule WCore.AccountsTest do
 
     test "does not return user for expired token", %{token: token} do
       dt = ~N[2020-01-01 00:00:00]
-      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt, authenticated_at: dt])
+      {1, nil} =
+        Repo.update_all(from(t in UserToken, where: t.token == ^token),
+          set: [inserted_at: dt, authenticated_at: dt]
+        )
+
       refute Accounts.get_user_by_session_token(token)
     end
   end
@@ -324,7 +334,14 @@ defmodule WCore.AccountsTest do
     end
 
     test "does not return user for expired token", %{token: token} do
-      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00]])
+      {:ok, query} = UserToken.verify_magic_link_token_query(token)
+      {_user, token_record} = Repo.one!(query)
+
+      {1, nil} =
+        Repo.update_all(from(t in UserToken, where: t.id == ^token_record.id),
+          set: [inserted_at: ~N[2020-01-01 00:00:00]]
+        )
+
       refute Accounts.get_user_by_magic_link_token(token)
     end
   end
@@ -352,7 +369,7 @@ defmodule WCore.AccountsTest do
 
     test "raises when unconfirmed user has password set" do
       user = unconfirmed_user_fixture()
-      {1, nil} = Repo.update_all(User, set: [hashed_password: "hashed"])
+      {1, nil} = Repo.update_all(from(u in User, where: u.id == ^user.id), set: [hashed_password: "hashed"])
       {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
 
       assert_raise RuntimeError, ~r/magic link log in is not allowed/, fn ->

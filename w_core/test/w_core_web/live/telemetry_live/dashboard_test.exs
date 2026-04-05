@@ -208,14 +208,14 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
       |> element("button[phx-value-by='events']")
       |> render_click()
 
-    assert html =~ "Events ↑"
+    assert html =~ "aria-sort=\"ascending\""
 
     html =
       lv
       |> element("button[phx-value-by='events']")
       |> render_click()
 
-    assert html =~ "Events ↓"
+    assert html =~ "aria-sort=\"descending\""
   end
 
   test "syncs pagination, filter and search with URL params", %{conn: conn} do
@@ -246,13 +246,13 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     |> element("button[phx-value-status='offline']")
     |> render_click()
 
-    assert_patch(lv, ~p"/control-room?page=1&status=offline")
+    assert_patch(lv, ~p"/control-room?status=offline")
 
     lv
     |> form("#dashboard-search", search: %{query: "sensor-21"})
     |> render_change()
 
-    assert_patch(lv, ~p"/control-room?page=1&q=sensor-21&status=offline")
+    assert_patch(lv, ~p"/control-room?q=sensor-21&status=offline")
   end
 
   test "loads dashboard state from URL params", %{conn: conn} do
@@ -274,7 +274,7 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     assert html =~ "Showing 1 of 1 machines"
     assert html =~ "node-b"
     refute html =~ "node-a"
-    assert html =~ "Events ↓"
+    assert html =~ "aria-sort=\"descending\""
   end
 
   test "exposes accessibility state for selected filter and sorted column", %{conn: conn} do
@@ -317,12 +317,12 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
   end
 
   test "canonicalizes invalid query params to clean URL", %{conn: conn} do
-    {:ok, lv, _html} =
-      conn
-      |> log_in_user(user_fixture())
-      |> live(~p"/control-room?page=0&q=%20%20&status=invalid&sort_by=invalid&sort_dir=invalid")
+    assert {:error, {:live_redirect, %{to: path}}} =
+             conn
+             |> log_in_user(user_fixture())
+             |> live(~p"/control-room?page=0&q=%20%20&status=invalid&sort_by=invalid&sort_dir=invalid")
 
-    assert_patch(lv, ~p"/control-room")
+    assert path == "/control-room"
   end
 
   test "canonicalizes out-of-range page to last available page", %{conn: conn} do
@@ -334,13 +334,12 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
       Telemetry.create_node(scope, %{machine_identifier: machine_identifier, location: "lab"})
     end)
 
-    {:ok, lv, html} =
-      conn
-      |> log_in_user(user)
-      |> live(~p"/control-room?page=999")
+    assert {:error, {:live_redirect, %{to: path}}} =
+             conn
+             |> log_in_user(user)
+             |> live(~p"/control-room?page=999")
 
-    assert html =~ "2 / 2"
-    assert_patch(lv, ~p"/control-room?page=2")
+    assert path == "/control-room?page=2"
   end
 
   test "countdown decreases on tick and resets after auto refresh", %{conn: conn} do
