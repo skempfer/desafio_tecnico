@@ -25,23 +25,49 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/w_core"
 import topbar from "../vendor/topbar"
 
+/**
+ * LiveView hook responsible for reflecting real-time socket connectivity
+ * in the dashboard connection card.
+ *
+ * Behavior:
+ * - Keeps data-state in sync with LiveSocket connection status.
+ * - Updates the visible label to "Live" or "Reconnecting".
+ * - Reacts to both LiveView and browser online/offline events.
+ */
 const ConnectionStatus = {
   mounted() {
+    this.state = null
+
     this.updateState(this.liveSocket.isConnected() ? "connected" : "disconnected")
 
     this.handleConnected = () => this.updateState("connected")
     this.handleDisconnected = () => this.updateState("disconnected")
+    this.handleBrowserOnline = () => this.syncFromSocket()
+    this.handleBrowserOffline = () => this.updateState("disconnected")
 
     window.addEventListener("phx:connected", this.handleConnected)
     window.addEventListener("phx:disconnected", this.handleDisconnected)
+    window.addEventListener("online", this.handleBrowserOnline)
+    window.addEventListener("offline", this.handleBrowserOffline)
   },
 
   destroyed() {
     window.removeEventListener("phx:connected", this.handleConnected)
     window.removeEventListener("phx:disconnected", this.handleDisconnected)
+    window.removeEventListener("online", this.handleBrowserOnline)
+    window.removeEventListener("offline", this.handleBrowserOffline)
+  },
+
+  syncFromSocket() {
+    this.updateState(this.liveSocket.isConnected() ? "connected" : "disconnected")
   },
 
   updateState(state) {
+    if (this.state === state) {
+      return
+    }
+
+    this.state = state
     this.el.dataset.state = state
 
     const label = this.el.querySelector("[data-role='connection-label']")
@@ -51,19 +77,48 @@ const ConnectionStatus = {
   },
 }
 
+/**
+ * LiveView hook that controls the dashboard table loading overlay.
+ *
+ * Behavior:
+ * - Tracks concurrent LiveView loading start/stop events.
+ * - Exposes loading state through data-loading for CSS-driven UI.
+ * - Uses a fallback timeout to avoid a stuck loading state if a stop
+ *   event is missed due to navigation or interruption.
+ */
 const DashboardLoading = {
   mounted() {
     this.activeLoads = 0
+    this.fallbackTimer = null
+
+    this.clearFallbackTimer = () => {
+      if (!this.fallbackTimer) {
+        return
+      }
+
+      clearTimeout(this.fallbackTimer)
+      this.fallbackTimer = null
+    }
+
+    this.startFallbackTimer = () => {
+      this.clearFallbackTimer()
+      this.fallbackTimer = setTimeout(() => {
+        this.activeLoads = 0
+        this.setLoading(false)
+      }, 5000)
+    }
 
     this.onStart = () => {
       this.activeLoads += 1
       this.setLoading(true)
+      this.startFallbackTimer()
     }
 
     this.onStop = () => {
       this.activeLoads = Math.max(0, this.activeLoads - 1)
 
       if (this.activeLoads === 0) {
+        this.clearFallbackTimer()
         this.setLoading(false)
       }
     }
@@ -75,6 +130,7 @@ const DashboardLoading = {
   destroyed() {
     window.removeEventListener("phx:page-loading-start", this.onStart)
     window.removeEventListener("phx:page-loading-stop", this.onStop)
+    this.clearFallbackTimer()
   },
 
   setLoading(isLoading) {

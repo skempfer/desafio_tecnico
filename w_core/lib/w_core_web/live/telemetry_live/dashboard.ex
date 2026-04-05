@@ -120,12 +120,12 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
             <div
               id="dashboard-connection-status"
               phx-hook="ConnectionStatus"
-              data-state="connected"
+              data-state="disconnected"
               class="group inline-flex min-w-28 flex-col items-end rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
             >
               <div class="text-xs leading-5 text-right">
                 <p class="font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Connection</p>
-                <p data-role="connection-label" class="inline-flex items-center justify-end gap-2 font-medium text-zinc-800 dark:text-zinc-100">
+                <p data-role="connection-label" role="status" aria-live="polite" class="inline-flex items-center justify-end gap-2 font-medium text-zinc-800 dark:text-zinc-100">
                   <span
                     class="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)] transition-colors duration-300 group-data-[state=disconnected]:bg-amber-500 group-data-[state=disconnected]:shadow-[0_0_0_4px_rgba(245,158,11,0.18)]"
                   />
