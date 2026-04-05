@@ -384,4 +384,32 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     assert has_element?(lv, "div", "2 / 2")
     assert has_element?(lv, "td", "sensor-21")
   end
+
+  test "shows contextual empty state and allows resetting filters", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Telemetry.create_node(scope, %{machine_identifier: "node-a", location: "A"})
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    html =
+      lv
+      |> element("button[phx-value-status='offline']")
+      |> render_click()
+
+    assert html =~ "No offline machines match the current filters."
+    assert has_element?(lv, "button[phx-click='reset_filters']")
+
+    html =
+      lv
+      |> element("button[phx-click='reset_filters']")
+      |> render_click()
+
+    assert html =~ "Showing 1 of 1 machines"
+    assert html =~ "node-a"
+  end
 end

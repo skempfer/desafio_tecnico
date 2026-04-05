@@ -264,7 +264,15 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           <tbody class="divide-y divide-zinc-200 text-zinc-800 dark:divide-zinc-800 dark:text-zinc-200">
             <tr :if={Enum.empty?(@rows)}>
               <td colspan="5" class="px-5 py-10 text-center text-zinc-500 dark:text-zinc-400">
-                {empty_state_text(@search_query)}
+                <p>{empty_state_text(@search_query, @status_filter)}</p>
+                <button
+                  :if={has_active_filters?(@search_query, @status_filter)}
+                  type="button"
+                  phx-click="reset_filters"
+                  class="mt-3 inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-700/60 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
+                >
+                  Reset filters
+                </button>
               </td>
             </tr>
             <tr
@@ -386,6 +394,16 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   @impl true
   def handle_event("clear_search", _params, socket) do
     {:noreply, patch_to(socket, %{"q" => "", "page" => "1"})}
+  end
+
+  @impl true
+  def handle_event("reset_filters", _params, socket) do
+    {:noreply,
+     patch_to(socket, %{
+       "q" => "",
+       "status" => "all",
+       "page" => "1"
+     })}
   end
 
   @impl true
@@ -633,8 +651,20 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     end
   end
 
-  defp empty_state_text(""), do: "No telemetry nodes found for this account yet."
-  defp empty_state_text(_query), do: "No machines match your search."
+  defp empty_state_text("", "all"), do: "No telemetry nodes found for this account yet."
+
+  defp empty_state_text("", status_filter) do
+    "No #{status_filter} machines match the current filters."
+  end
+
+  defp empty_state_text(_query, "all"), do: "No machines match your search."
+
+  defp empty_state_text(_query, status_filter) do
+    "No #{status_filter} machines match your search and filters."
+  end
+
+  defp has_active_filters?("", "all"), do: false
+  defp has_active_filters?(_search_query, _status_filter), do: true
 
   defp mark_refreshed(socket) do
     socket
