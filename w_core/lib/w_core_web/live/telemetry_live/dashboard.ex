@@ -13,6 +13,9 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   @refresh_delay_ms 50
   @nodes_per_page 20
+  @auto_refresh_seconds 10
+  @countdown_tick_ms 1_000
+  @countdown_circumference 100.53
 
   @impl true
   @doc """
@@ -25,7 +28,11 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   """
 
   def mount(params, _session, socket) do
-    if connected?(socket), do: Telemetry.subscribe_dashboard_updates()
+    if connected?(socket) do
+      Telemetry.subscribe_dashboard_updates()
+      schedule_auto_refresh()
+      schedule_countdown_tick()
+    end
 
     page = parse_page(Map.get(params, "page"))
 
@@ -42,6 +49,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:has_prev, false)
       |> assign(:has_next, false)
       |> assign(:visible_node_ids, MapSet.new())
+      |> assign(:countdown_circumference, @countdown_circumference)
+      |> assign(:seconds_until_refresh, @auto_refresh_seconds)
       |> load_page(page)
 
     {:ok,
@@ -58,6 +67,32 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       <.header>
         Control Room
         <:subtitle>Real-time machine heartbeat overview</:subtitle>
+        <:actions>
+          <div class="inline-flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div class="text-xs leading-5">
+              <p class="font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Next update in</p>
+            </div>
+
+            <div class="relative size-10">
+              <svg viewBox="0 0 40 40" class="size-10 -rotate-90" role="img" aria-label="Auto refresh countdown">
+                <circle cx="20" cy="20" r="16" class="fill-none stroke-zinc-200 dark:stroke-zinc-700" stroke-width="4" />
+                <circle
+                  cx="20"
+                  cy="20"
+                  r="16"
+                  class="fill-none stroke-indigo-500 transition-all duration-700 ease-linear"
+                  stroke-width="4"
+                  stroke-linecap="round"
+                  stroke-dasharray={@countdown_circumference}
+                  stroke-dashoffset={countdown_offset(@seconds_until_refresh)}
+                />
+              </svg>
+              <div class="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
+                {@seconds_until_refresh}
+              </div>
+            </div>
+          </div>
+        </:actions>
       </.header>
 
       <section class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -111,32 +146,40 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         </table>
       </div>
 
-      <div class="mt-5 flex justify-center">
-        <div class="inline-flex items-center rounded-full border border-zinc-200 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
-          <button
-            type="button"
-            phx-click="prev_page"
-            disabled={!@has_prev}
-            aria-label="Go to previous page"
-            class="inline-flex size-9 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 enabled:hover:text-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-800 dark:enabled:hover:text-white dark:disabled:text-zinc-600"
-          >
-            <.icon name="hero-chevron-left" class="size-4" />
-          </button>
+      <div class="mt-5 grid items-center gap-3 sm:grid-cols-3">
+        <div class="hidden sm:block" />
 
-          <div class="min-w-20 px-2 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            {@page} / {@total_pages}
+        <div class="flex justify-center">
+          <div class="inline-flex items-center rounded-full border border-zinc-200 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+            <button
+              type="button"
+              phx-click="prev_page"
+              disabled={!@has_prev}
+              aria-label="Go to previous page"
+              class="inline-flex size-9 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 enabled:hover:text-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-800 dark:enabled:hover:text-white dark:disabled:text-zinc-600"
+            >
+              <.icon name="hero-chevron-left" class="size-4" />
+            </button>
+
+            <div class="min-w-20 px-2 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              {@page} / {@total_pages}
+            </div>
+
+            <button
+              type="button"
+              phx-click="next_page"
+              disabled={!@has_next}
+              aria-label="Go to next page"
+              class="inline-flex size-9 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 enabled:hover:text-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-800 dark:enabled:hover:text-white dark:disabled:text-zinc-600"
+            >
+              <.icon name="hero-chevron-right" class="size-4" />
+            </button>
           </div>
-
-          <button
-            type="button"
-            phx-click="next_page"
-            disabled={!@has_next}
-            aria-label="Go to next page"
-            class="inline-flex size-9 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 enabled:hover:text-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-800 dark:enabled:hover:text-white dark:disabled:text-zinc-600"
-          >
-            <.icon name="hero-chevron-right" class="size-4" />
-          </button>
         </div>
+
+        <p class="text-center text-sm font-medium text-zinc-500 sm:text-right dark:text-zinc-400">
+          Showing {length(@rows)} of {@total_entries} machines
+        </p>
       </div>
     </Layouts.app>
     """
@@ -196,7 +239,28 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
      socket
      |> assign(:rows, rows)
      |> assign(:pending_node_ids, MapSet.new())
-     |> assign(:refresh_timer_ref, nil)}
+     |> assign(:refresh_timer_ref, nil)
+     |> mark_refreshed()}
+  end
+
+  @impl true
+  def handle_info(:auto_refresh_page, socket) do
+    schedule_auto_refresh()
+    {:noreply, load_page(socket, socket.assigns.page)}
+  end
+
+  @impl true
+  def handle_info(:countdown_tick, socket) do
+    schedule_countdown_tick()
+
+    seconds_until_refresh =
+      socket.assigns.seconds_until_refresh
+      |> Kernel.-(1)
+      |> max(0)
+
+    {:noreply,
+     socket
+     |> assign(:seconds_until_refresh, seconds_until_refresh)}
   end
 
   defp format_ts(nil), do: "-"
@@ -243,9 +307,33 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     |> assign(:visible_node_ids, visible_node_ids)
     |> assign(:pending_node_ids, MapSet.new())
     |> assign(:refresh_timer_ref, nil)
+    |> mark_refreshed()
   end
 
   defp count_by_status(rows, status) do
     Enum.count(rows, &(&1.status == status))
+  end
+
+  defp mark_refreshed(socket) do
+    socket
+    |> assign(:seconds_until_refresh, @auto_refresh_seconds)
+  end
+
+  defp countdown_offset(seconds_until_refresh) do
+    progress =
+      seconds_until_refresh
+      |> max(0)
+      |> min(@auto_refresh_seconds)
+      |> Kernel./(@auto_refresh_seconds)
+
+    Float.round(@countdown_circumference * (1 - progress), 2)
+  end
+
+  defp schedule_auto_refresh do
+    Process.send_after(self(), :auto_refresh_page, @auto_refresh_seconds * @countdown_tick_ms)
+  end
+
+  defp schedule_countdown_tick do
+    Process.send_after(self(), :countdown_tick, @countdown_tick_ms)
   end
 end

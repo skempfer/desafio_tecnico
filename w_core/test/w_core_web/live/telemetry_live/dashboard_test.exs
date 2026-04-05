@@ -51,7 +51,7 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
 
     html = render(lv)
     assert html =~ "DEGRADED"
-    assert html =~ "<td>1</td>"
+    assert html =~ "tabular-nums\">1</td>"
   end
 
   test "paginates nodes with 20 rows per page", %{conn: conn} do
@@ -68,16 +68,18 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
       |> log_in_user(user)
       |> live(~p"/control-room")
 
-    assert html =~ "Page 1 of 2"
+    assert html =~ "1 / 2"
+    assert html =~ "Showing 20 of 25 machines"
     assert html =~ "sensor-01"
     refute html =~ "sensor-21"
 
     html =
       lv
-      |> element("button", "Next")
+      |> element("button[aria-label='Go to next page']")
       |> render_click()
 
-    assert html =~ "Page 2 of 2"
+    assert html =~ "2 / 2"
+    assert html =~ "Showing 5 of 25 machines"
     assert html =~ "sensor-21"
     refute html =~ "sensor-01"
   end
