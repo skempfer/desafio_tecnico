@@ -173,10 +173,31 @@ const ThemeToggle = {
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+
+/**
+ * LiveView hook that listens for server-pushed download_csv events and
+ * triggers a browser file download with the provided CSV content.
+ */
+const CsvDownload = {
+  mounted() {
+    this.handleEvent("download_csv", ({csv, filename}) => {
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.style.display = "none"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    })
+  },
+}
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ConnectionStatus, DashboardLoading, ThemeToggle},
+  hooks: {...colocatedHooks, ConnectionStatus, DashboardLoading, ThemeToggle, CsvDownload},
 })
 
 // Show progress bar on live navigation and form submits

@@ -63,6 +63,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:auto_refresh_seconds, auto_refresh_seconds)
       |> assign(:countdown_circumference, @countdown_circumference)
       |> assign(:seconds_until_refresh, auto_refresh_seconds)
+      |> assign(:selected_ids, MapSet.new())
+      |> assign(:select_all_pages, false)
       |> load_page(page, :mount)
 
     {:ok,
@@ -129,6 +131,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       page_subtitle="Real-time machine heartbeat overview"
       content_max_width="max-w-6xl"
     >
+      <div id="csv-download-hook" phx-hook="CsvDownload" class="hidden" />
       <div class="mb-4 flex flex-col gap-3 sm:flex-row">
         <div
           id="dashboard-connection-status"
@@ -253,6 +256,42 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       </section>
 
       <div
+        id="bulk-actions-bar"
+        data-visible={to_string(has_selection?(@selected_ids, @select_all_pages))}
+        class={[
+          "overflow-hidden transition-all duration-200 ease-in-out",
+          if(has_selection?(@selected_ids, @select_all_pages),
+            do: "max-h-20 mb-3 opacity-100",
+            else: "max-h-0 opacity-0 pointer-events-none"
+          )
+        ]}
+        aria-hidden={to_string(!has_selection?(@selected_ids, @select_all_pages))}
+      >
+        <div class="flex items-center justify-between rounded-xl border border-indigo-500/30 bg-indigo-950/30 px-4 py-2.5 dark:border-indigo-500/20 dark:bg-indigo-900/20">
+          <span class="text-sm font-semibold text-indigo-300">
+            Selected: {selection_count(@selected_ids, @select_all_pages, @total_entries)}
+          </span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              phx-click="export_csv"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-600/20 px-3 py-1.5 text-xs font-semibold text-indigo-300 transition hover:bg-indigo-600/30 dark:border-indigo-500/30"
+            >
+              <.icon name="hero-arrow-down-tray" class="size-3.5" />
+              Export CSV
+            </button>
+            <button
+              type="button"
+              phx-click="clear_selection"
+              class="inline-flex items-center rounded-lg border border-zinc-600/40 bg-zinc-800/40 px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:bg-zinc-700/40 dark:border-zinc-600/30"
+            >
+              Clear selection
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
         id="dashboard-results"
         phx-hook="DashboardLoading"
         data-loading="false"
@@ -266,11 +305,25 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
               <th aria-sort={aria_sort("status", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="status" current_by={@sort_by} current_dir={@sort_dir}>Status</.sort_button></th>
               <th aria-sort={aria_sort("events", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="events" current_by={@sort_by} current_dir={@sort_dir}>Events</.sort_button></th>
               <th aria-sort={aria_sort("last_seen", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="last_seen" current_by={@sort_by} current_dir={@sort_dir}>Last Seen</.sort_button></th>
+              <th class="w-10 px-3 py-3.5 text-center">
+                <form id="select-all-form" phx-change="toggle_select_all" class="inline-flex">
+                  <input type="hidden" name="select_all" value="false" />
+                  <input
+                    type="checkbox"
+                    id="select-all-checkbox"
+                    name="select_all"
+                    value="true"
+                    checked={@select_all_pages}
+                    aria-label="Select all machines"
+                    class="size-4 cursor-pointer rounded border-zinc-300 text-indigo-600 accent-indigo-600 focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
+                  />
+                </form>
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-zinc-200 text-zinc-800 dark:divide-zinc-800 dark:text-zinc-200">
             <tr :if={Enum.empty?(@rows)}>
-              <td colspan="5" class="px-5 py-10 text-center text-zinc-500 dark:text-zinc-400">
+              <td colspan="6" class="px-5 py-10 text-center text-zinc-500 dark:text-zinc-400">
                 <p>{empty_state_text(@search_query, @status_filter)}</p>
                 <button
                   :if={has_active_filters?(@search_query, @status_filter)}
@@ -292,6 +345,20 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
               <td class="px-5 py-3.5"><.status_badge status={row.status} /></td>
               <td class="px-5 py-3.5 tabular-nums">{row.total_events_processed}</td>
               <td class="px-5 py-3.5 tabular-nums text-zinc-600 dark:text-zinc-300">{format_ts(row.last_seen_at)}</td>
+              <td class="w-10 px-3 py-3.5 text-center">
+                <form id={"row-select-#{row.machine_identifier}"} phx-change="toggle_row_select" class="inline-flex">
+                  <input type="hidden" name="row_id" value={row.machine_identifier} />
+                  <input type="hidden" name="selected" value="false" />
+                  <input
+                    type="checkbox"
+                    name="selected"
+                    value="true"
+                    checked={@select_all_pages or MapSet.member?(@selected_ids, row.machine_identifier)}
+                    aria-label={"Select #{row.machine_identifier}"}
+                    class="size-4 cursor-pointer rounded border-zinc-300 text-indigo-600 accent-indigo-600 focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
+                  />
+                </form>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -343,6 +410,10 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     """
   end
 
+  @doc """
+  Handles dashboard UI events including pagination, filters, sorting, row
+  selection, select-all export mode, clearing selection, and CSV export.
+  """
   @impl true
   def handle_event("prev_page", _params, socket) do
     target_page = max(1, socket.assigns.page - 1)
@@ -411,6 +482,65 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
        "status" => "all",
        "page" => "1"
      })}
+  end
+
+  @impl true
+  def handle_event("toggle_select_all", params, socket) do
+    select_all_pages = param_truthy?(params, "select_all")
+
+    {:noreply,
+     socket
+     |> assign(:select_all_pages, select_all_pages)
+     |> assign(:selected_ids, MapSet.new())}
+  end
+
+  @impl true
+  def handle_event("toggle_row_select", %{"row_id" => machine_id} = params, socket) do
+    selected = param_truthy?(params, "selected")
+
+    selected_ids =
+      if selected do
+        MapSet.put(socket.assigns.selected_ids, machine_id)
+      else
+        MapSet.delete(socket.assigns.selected_ids, machine_id)
+      end
+
+    {:noreply,
+     socket
+     |> assign(:selected_ids, selected_ids)
+     |> assign(:select_all_pages, false)}
+  end
+
+  @impl true
+  def handle_event("clear_selection", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:selected_ids, MapSet.new())
+     |> assign(:select_all_pages, false)}
+  end
+
+  @impl true
+  def handle_event("export_csv", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    rows_to_export =
+      if socket.assigns.select_all_pages do
+        Telemetry.list_all_nodes_for_export(scope,
+          search: socket.assigns.search_query,
+          status: socket.assigns.status_filter,
+          sort_by: socket.assigns.sort_by,
+          sort_dir: socket.assigns.sort_dir
+        )
+      else
+        Enum.filter(socket.assigns.rows, fn row ->
+          MapSet.member?(socket.assigns.selected_ids, row.machine_identifier)
+        end)
+      end
+
+    csv = build_csv(rows_to_export)
+    filename = "control_room_#{Date.utc_today()}.csv"
+
+    {:noreply, push_event(socket, "download_csv", %{csv: csv, filename: filename})}
   end
 
   @impl true
@@ -502,6 +632,54 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp format_ts(nil), do: "-"
   defp format_ts(ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S")
+
+  defp has_selection?(selected_ids, select_all_pages) do
+    select_all_pages or MapSet.size(selected_ids) > 0
+  end
+
+  defp selection_count(_selected_ids, true, total_entries), do: total_entries
+  defp selection_count(selected_ids, false, _total_entries), do: MapSet.size(selected_ids)
+
+  defp build_csv(rows) do
+    header = "Machine,Location,Status,Events,Last Seen\r\n"
+
+    data =
+      rows
+      |> Enum.map(fn row ->
+        [
+          csv_escape(row.machine_identifier),
+          csv_escape(row.location || ""),
+          csv_escape(row.status),
+          Integer.to_string(row.total_events_processed || 0),
+          csv_escape(format_ts(row.last_seen_at))
+        ]
+        |> Enum.join(",")
+        |> Kernel.<>("\r\n")
+      end)
+      |> Enum.join()
+
+    header <> data
+  end
+
+  defp csv_escape(value) when is_binary(value) do
+    if String.contains?(value, [",", "\"", "\n", "\r"]) do
+      "\"#{String.replace(value, "\"", "\"\"")}\""
+    else
+      value
+    end
+  end
+
+  defp csv_escape(value), do: csv_escape(to_string(value))
+
+  defp param_truthy?(params, key) do
+    case Map.get(params, key) do
+      values when is_list(values) -> Enum.any?(values, &truthy_value?/1)
+      value -> truthy_value?(value)
+    end
+  end
+
+  defp truthy_value?(value) when value in [true, "true", "on", "1"], do: true
+  defp truthy_value?(_value), do: false
 
   defp parse_page(nil), do: 1
 
@@ -651,7 +829,13 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       }
     )
 
-    socket
+    if source == :auto_refresh do
+      socket
+    else
+      socket
+      |> assign(:selected_ids, MapSet.new())
+      |> assign(:select_all_pages, false)
+    end
   end
 
   defp emit_telemetry(event, measurements, metadata) do

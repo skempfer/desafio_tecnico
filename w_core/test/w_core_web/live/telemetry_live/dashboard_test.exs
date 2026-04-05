@@ -411,6 +411,81 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     refute has_element?(lv, "td", "sensor-01")
   end
 
+  test "bulk actions bar appears with row selection and clear hides it", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Telemetry.create_node(scope, %{machine_identifier: "node-a", location: "A"})
+    Telemetry.create_node(scope, %{machine_identifier: "node-b", location: "B"})
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    refute has_element?(lv, "#bulk-actions-bar[data-visible='true']")
+
+    lv
+    |> form("#row-select-node-a", %{"row_id" => "node-a", "selected" => "true"})
+    |> render_change()
+
+    assert has_element?(lv, "#bulk-actions-bar[data-visible='true']")
+    assert has_element?(lv, "#bulk-actions-bar", "Selected: 1")
+
+    lv
+    |> element("button[phx-click='clear_selection']")
+    |> render_click()
+
+    refute has_element?(lv, "#bulk-actions-bar[data-visible='true']")
+  end
+
+  test "select all shows total filtered count in bulk actions bar", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Enum.each(1..25, fn i ->
+      machine_identifier = "sensor-#{String.pad_leading(Integer.to_string(i), 2, "0")}"
+      Telemetry.create_node(scope, %{machine_identifier: machine_identifier, location: "lab"})
+    end)
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    lv
+    |> form("#select-all-form", %{"select_all" => "true"})
+    |> render_change()
+
+    assert has_element?(lv, "#bulk-actions-bar[data-visible='true']")
+    assert has_element?(lv, "#bulk-actions-bar", "Selected: 25")
+  end
+
+  test "export button stays available after selecting rows", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Telemetry.create_node(scope, %{machine_identifier: "node-a", location: "A"})
+    Telemetry.create_node(scope, %{machine_identifier: "node-b", location: "B"})
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    lv
+    |> form("#row-select-node-a", %{"row_id" => "node-a", "selected" => "true"})
+    |> render_change()
+
+    html =
+      lv
+      |> element("button[phx-click='export_csv']")
+      |> render_click()
+
+    assert html =~ "Selected: 1"
+    assert has_element?(lv, "button[phx-click='clear_selection']")
+  end
+
   test "shows contextual empty state and allows resetting filters", %{conn: conn} do
     user = user_fixture()
     scope = Scope.for_user(user)

@@ -127,6 +127,36 @@ defmodule WCore.Telemetry do
   end
 
   @doc """
+  Returns all nodes matching the given filters, enriched with hot telemetry
+  state, without pagination. Intended for CSV export.
+
+  Accepts the same filter options as `list_nodes_with_hot_state_paginated/2`:
+  `:search`, `:status`, `:sort_by`, `:sort_dir`.
+  """
+  @spec list_all_nodes_for_export(Scope.t(), keyword()) :: [map()]
+  def list_all_nodes_for_export(%Scope{} = scope, opts \\ []) do
+    search = opts |> Keyword.get(:search, "") |> normalize_search_query()
+    status_filter = opts |> Keyword.get(:status, "all") |> normalize_status_filter()
+    sort_by = opts |> Keyword.get(:sort_by, "status") |> normalize_sort_by()
+    sort_dir = opts |> Keyword.get(:sort_dir, "asc") |> normalize_sort_dir()
+
+    rows =
+      scope
+      |> scoped_nodes_query(search)
+      |> Repo.all()
+      |> Enum.sort_by(& &1.machine_identifier)
+      |> Enum.map(&to_hot_row/1)
+
+    filtered =
+      case status_filter do
+        "all" -> rows
+        status -> Enum.filter(rows, &(&1.status == status))
+      end
+
+    sort_rows(filtered, sort_by, sort_dir)
+  end
+
+  @doc """
   Gets one scoped node enriched with hot telemetry state, by machine identifier.
   """
   @spec get_node_with_hot_state(Scope.t(), String.t()) :: map() | nil
