@@ -83,4 +83,50 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     assert html =~ "sensor-21"
     refute html =~ "sensor-01"
   end
+
+  test "filters by machine and location and resets to first page", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Enum.each(1..25, fn i ->
+      machine_identifier = "sensor-#{String.pad_leading(Integer.to_string(i), 2, "0")}"
+      location = if i == 21, do: "South Bay", else: "lab"
+      Telemetry.create_node(scope, %{machine_identifier: machine_identifier, location: location})
+    end)
+
+    {:ok, lv, html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    assert html =~ "1 / 2"
+
+    html =
+      lv
+      |> element("button[aria-label='Go to next page']")
+      |> render_click()
+
+    assert html =~ "2 / 2"
+    assert html =~ "sensor-21"
+
+    html =
+      lv
+      |> form("#dashboard-search", search: %{query: "sensor-01"})
+      |> render_change()
+
+    assert html =~ "1 / 1"
+    assert html =~ "Showing 1 of 1 machines"
+    assert html =~ "sensor-01"
+    refute html =~ "sensor-21"
+
+    html =
+      lv
+      |> form("#dashboard-search", search: %{query: "south"})
+      |> render_change()
+
+    assert html =~ "1 / 1"
+    assert html =~ "Showing 1 of 1 machines"
+    assert html =~ "South Bay"
+    assert html =~ "sensor-21"
+  end
 end

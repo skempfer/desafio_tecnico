@@ -32,6 +32,9 @@ defmodule WCore.Telemetry do
   @typedoc "Composite identifier used to mark persisted events as processed."
   @type processed_key :: {node_id(), event_timestamp()}
 
+  @typedoc "Optional search query for machine identifier/location filtering."
+  @type search_query :: String.t()
+
   @typedoc "Pagination result for a hot-state node query."
   @type hot_state_page :: %{
           entries: [map()],
@@ -61,10 +64,12 @@ defmodule WCore.Telemetry do
   Accepted options:
     * `:page` - page number, defaults to `1`
     * `:per_page` - page size, defaults to `20` and caps at `100`
+    * `:search` - optional case-insensitive filter on machine identifier and location
   """
   @spec list_nodes_with_hot_state_paginated(Scope.t(), keyword()) :: hot_state_page()
   def list_nodes_with_hot_state_paginated(%Scope{} = scope, opts \\ []) do
     requested_page = normalize_positive_int(Keyword.get(opts, :page), 1)
+    search = opts |> Keyword.get(:search, "") |> normalize_search_query()
 
     per_page =
       opts
@@ -72,7 +77,7 @@ defmodule WCore.Telemetry do
       |> normalize_positive_int(@default_nodes_per_page)
       |> min(@max_nodes_per_page)
 
-    base_query = from(n in Node, where: n.user_id == ^scope.user.id)
+    base_query = scoped_nodes_query(scope, search)
     total_entries = Repo.aggregate(base_query, :count, :id)
     total_pages = max(1, div(total_entries + per_page - 1, per_page))
     page = min(requested_page, total_pages)
@@ -135,6 +140,28 @@ defmodule WCore.Telemetry do
 
   defp normalize_positive_int(value, _default) when is_integer(value) and value > 0, do: value
   defp normalize_positive_int(_value, default), do: default
+
+  defp normalize_search_query(search) when is_binary(search) do
+    search
+    |> String.trim()
+  end
+
+  defp normalize_search_query(_search), do: ""
+
+  defp scoped_nodes_query(%Scope{} = scope, "") do
+    from(n in Node, where: n.user_id == ^scope.user.id)
+  end
+
+  defp scoped_nodes_query(%Scope{} = scope, search) do
+    pattern = "%#{String.downcase(search)}%"
+
+    from(n in Node,
+      where: n.user_id == ^scope.user.id,
+      where:
+        fragment("lower(?) like ?", n.machine_identifier, ^pattern) or
+          fragment("lower(?) like ?", n.location, ^pattern)
+    )
+  end
 
   @doc """
   Persists a raw telemetry event before cache aggregation.

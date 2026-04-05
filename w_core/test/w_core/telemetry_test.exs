@@ -180,5 +180,35 @@ defmodule WCore.TelemetryTest do
       assert enriched.total_events_processed == 1
       assert enriched.last_seen_at == ts
     end
+
+    test "list_nodes_with_hot_state_paginated/2 filters by machine identifier and location" do
+      scope = user_scope_fixture()
+
+      node_fixture(scope, %{machine_identifier: "reactor-alpha", location: "North Wing"})
+      node_fixture(scope, %{machine_identifier: "pump-beta", location: "South Bay"})
+      node_fixture(scope, %{machine_identifier: "sensor-gamma", location: "Line A"})
+
+      page_machine =
+        Telemetry.list_nodes_with_hot_state_paginated(scope,
+          page: 1,
+          per_page: 20,
+          search: "ReAcToR"
+        )
+
+      assert page_machine.total_entries == 1
+      assert length(page_machine.entries) == 1
+      assert hd(page_machine.entries).machine_identifier == "reactor-alpha"
+
+      page_location =
+        Telemetry.list_nodes_with_hot_state_paginated(scope,
+          page: 1,
+          per_page: 20,
+          search: "south"
+        )
+
+      assert page_location.total_entries == 1
+      assert length(page_location.entries) == 1
+      assert hd(page_location.entries).location == "South Bay"
+    end
   end
 end
