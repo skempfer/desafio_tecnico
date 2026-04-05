@@ -119,5 +119,66 @@ defmodule WCore.TelemetryTest do
       assert row.total_events_processed == 1
       assert row.last_seen_at == ts
     end
+
+    test "list_nodes_with_hot_state_paginated/2 uses default page size and metadata" do
+      scope = user_scope_fixture()
+
+      Enum.each(1..25, fn i ->
+        node_fixture(scope, %{machine_identifier: "node-#{String.pad_leading(Integer.to_string(i), 2, "0")}"})
+      end)
+
+      page = Telemetry.list_nodes_with_hot_state_paginated(scope)
+
+      assert page.page == 1
+      assert page.per_page == 20
+      assert page.total_entries == 25
+      assert page.total_pages == 2
+      assert page.has_prev == false
+      assert page.has_next == true
+      assert length(page.entries) == 20
+      assert Enum.at(page.entries, 0).machine_identifier == "node-01"
+    end
+
+    test "list_nodes_with_hot_state_paginated/2 returns second page with remaining items" do
+      scope = user_scope_fixture()
+
+      Enum.each(1..25, fn i ->
+        node_fixture(scope, %{machine_identifier: "node-#{String.pad_leading(Integer.to_string(i), 2, "0")}"})
+      end)
+
+      page = Telemetry.list_nodes_with_hot_state_paginated(scope, page: 2, per_page: 20)
+
+      assert page.page == 2
+      assert page.per_page == 20
+      assert page.total_entries == 25
+      assert page.total_pages == 2
+      assert page.has_prev == true
+      assert page.has_next == false
+      assert length(page.entries) == 5
+      assert Enum.at(page.entries, 0).machine_identifier == "node-21"
+    end
+
+    test "list_nodes_with_hot_state_paginated/2 clamps invalid values and keeps ETS enrichment" do
+      scope = user_scope_fixture()
+
+      Enum.each(1..3, fn i ->
+        node_fixture(scope, %{machine_identifier: "sensor-#{i}"})
+      end)
+
+      ts = ~U[2026-04-04 13:00:00Z]
+      WCore.Telemetry.Cache.put("sensor-2", "degraded", %{load: 93}, ts)
+
+      page = Telemetry.list_nodes_with_hot_state_paginated(scope, page: -10, per_page: 0)
+
+      assert page.page == 1
+      assert page.per_page == 20
+      assert page.total_entries == 3
+      assert length(page.entries) == 3
+
+      enriched = Enum.find(page.entries, &(&1.machine_identifier == "sensor-2"))
+      assert enriched.status == "degraded"
+      assert enriched.total_events_processed == 1
+      assert enriched.last_seen_at == ts
+    end
   end
 end

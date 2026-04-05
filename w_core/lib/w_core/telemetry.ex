@@ -32,6 +32,20 @@ defmodule WCore.Telemetry do
   @typedoc "Composite identifier used to mark persisted events as processed."
   @type processed_key :: {node_id(), event_timestamp()}
 
+  @typedoc "Pagination result for a hot-state node query."
+  @type hot_state_page :: %{
+          entries: [map()],
+          page: pos_integer(),
+          per_page: pos_integer(),
+          total_entries: non_neg_integer(),
+          total_pages: pos_integer(),
+          has_prev: boolean(),
+          has_next: boolean()
+        }
+
+  @default_nodes_per_page 20
+  @max_nodes_per_page 100
+
   @doc """
   Lists scoped nodes enriched with hot telemetry state from ETS.
   """
@@ -39,6 +53,48 @@ defmodule WCore.Telemetry do
   def list_nodes_with_hot_state(%Scope{} = scope) do
     list_nodes(scope)
     |> Enum.map(&to_hot_row/1)
+  end
+
+  @doc """
+  Lists scoped nodes enriched with hot telemetry state from ETS with pagination.
+
+  Accepted options:
+    * `:page` - page number, defaults to `1`
+    * `:per_page` - page size, defaults to `20` and caps at `100`
+  """
+  @spec list_nodes_with_hot_state_paginated(Scope.t(), keyword()) :: hot_state_page()
+  def list_nodes_with_hot_state_paginated(%Scope{} = scope, opts \\ []) do
+    requested_page = normalize_positive_int(Keyword.get(opts, :page), 1)
+
+    per_page =
+      opts
+      |> Keyword.get(:per_page)
+      |> normalize_positive_int(@default_nodes_per_page)
+      |> min(@max_nodes_per_page)
+
+    base_query = from(n in Node, where: n.user_id == ^scope.user.id)
+    total_entries = Repo.aggregate(base_query, :count, :id)
+    total_pages = max(1, div(total_entries + per_page - 1, per_page))
+    page = min(requested_page, total_pages)
+    offset = (page - 1) * per_page
+
+    entries =
+      base_query
+      |> order_by([n], asc: n.machine_identifier)
+      |> limit(^per_page)
+      |> offset(^offset)
+      |> Repo.all()
+      |> Enum.map(&to_hot_row/1)
+
+    %{
+      entries: entries,
+      page: page,
+      per_page: per_page,
+      total_entries: total_entries,
+      total_pages: total_pages,
+      has_prev: page > 1,
+      has_next: page < total_pages
+    }
   end
 
   @doc """
@@ -76,6 +132,9 @@ defmodule WCore.Telemetry do
     end
 
   end
+
+  defp normalize_positive_int(value, _default) when is_integer(value) and value > 0, do: value
+  defp normalize_positive_int(_value, default), do: default
 
   @doc """
   Persists a raw telemetry event before cache aggregation.

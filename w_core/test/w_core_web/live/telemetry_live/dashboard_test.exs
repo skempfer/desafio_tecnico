@@ -50,7 +50,35 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     Process.sleep(80)
 
     html = render(lv)
-    assert html =~ "degraded"
+    assert html =~ "DEGRADED"
     assert html =~ "<td>1</td>"
+  end
+
+  test "paginates nodes with 20 rows per page", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Enum.each(1..25, fn i ->
+      machine_identifier = "sensor-#{String.pad_leading(Integer.to_string(i), 2, "0")}"
+      Telemetry.create_node(scope, %{machine_identifier: machine_identifier, location: "lab"})
+    end)
+
+    {:ok, lv, html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    assert html =~ "Page 1 of 2"
+    assert html =~ "sensor-01"
+    refute html =~ "sensor-21"
+
+    html =
+      lv
+      |> element("button", "Next")
+      |> render_click()
+
+    assert html =~ "Page 2 of 2"
+    assert html =~ "sensor-21"
+    refute html =~ "sensor-01"
   end
 end
