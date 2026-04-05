@@ -138,11 +138,45 @@ const DashboardLoading = {
   },
 }
 
+/**
+ * LiveView hook that highlights the active theme button in the ThemeToggle
+ * component. On mount and whenever the phx:set-theme event fires, it reads
+ * the current theme from localStorage and applies the active style to the
+ * matching [data-theme-btn] button while removing it from the others.
+ */
+const ThemeToggle = {
+  mounted() {
+    this.syncActive()
+    this.handler = () => this.syncActive()
+    window.addEventListener("phx:set-theme", this.handler)
+    window.addEventListener("storage", this.handler)
+  },
+
+  destroyed() {
+    window.removeEventListener("phx:set-theme", this.handler)
+    window.removeEventListener("storage", this.handler)
+  },
+
+  syncActive() {
+    const current = localStorage.getItem("phx:theme") || "system"
+    this.el.querySelectorAll("[data-theme-btn]").forEach(btn => {
+      const isActive = btn.dataset.themeBtn === current
+      btn.classList.toggle("bg-white", isActive)
+      btn.classList.toggle("dark:bg-zinc-600", isActive)
+      btn.classList.toggle("text-zinc-900", isActive)
+      btn.classList.toggle("dark:text-white", isActive)
+      btn.classList.toggle("shadow-sm", isActive)
+      btn.classList.toggle("text-zinc-500", !isActive)
+      btn.classList.toggle("dark:text-zinc-400", !isActive)
+    })
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ConnectionStatus, DashboardLoading},
+  hooks: {...colocatedHooks, ConnectionStatus, DashboardLoading, ThemeToggle},
 })
 
 // Show progress bar on live navigation and form submits

@@ -31,46 +31,39 @@ defmodule WCoreWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
+  attr :page_title, :string, default: nil, doc: "optional page title shown in the app header"
+  attr :page_subtitle, :string, default: nil, doc: "optional subtitle shown below the page title"
+
   slot :inner_block, required: true
 
   @spec app(term()) :: term()
   def app(assigns) do
     ~H"""
     <header class="border-b border-zinc-200 px-4 sm:px-6 lg:px-8 dark:border-zinc-800">
-      <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 py-4">
-        <a href="/" class="flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
-        <ul class="flex items-center gap-2 sm:gap-3">
-          <li class="hidden md:block">
-            <a
-              href="https://phoenixframework.org/"
-              class="rounded-md px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
+      <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 py-3">
+        <div>
+          <h1 :if={@page_title} class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+            {@page_title}
+          </h1>
+          <p :if={@page_subtitle} class="text-sm text-zinc-500 dark:text-zinc-400">
+            {@page_subtitle}
+          </p>
+        </div>
+        <div class="flex items-center gap-2 sm:gap-3">
+          <%= if @current_scope && @current_scope.user do %>
+            <span class="hidden truncate text-sm text-zinc-500 dark:text-zinc-400 sm:block max-w-[200px]">
+              {@current_scope.user.email}
+            </span>
+            <.link
+              href={~p"/users/log-out"}
+              method="delete"
+              class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
             >
-              Website
-            </a>
-          </li>
-          <li class="hidden md:block">
-            <a
-              href="https://github.com/phoenixframework/phoenix"
-              class="rounded-md px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
-            >
-              GitHub
-            </a>
-          </li>
-          <li class="sm:hidden">
-            <.theme_toggle />
-          </li>
-          <li class="hidden sm:block">
-            <a
-              href="https://hexdocs.pm/phoenix/overview.html"
-              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-            >
-              Get Started <span aria-hidden="true">→</span>
-            </a>
-          </li>
-        </ul>
+              Log out
+            </.link>
+          <% end %>
+          <.theme_toggle current_scope={@current_scope} />
+        </div>
       </div>
     </header>
 
@@ -129,40 +122,65 @@ defmodule WCoreWeb.Layouts do
   end
 
   @doc """
-  Provides a simple theme toggle without external UI plugin classes.
+  Provides a theme toggle with sun/moon/system icons and active state highlight.
+  Optionally renders a settings gear icon when current_scope has a user.
   """
+  attr :current_scope, :map, default: nil
+
   @spec theme_toggle(term()) :: term()
   def theme_toggle(assigns) do
     ~H"""
-    <div class="flex items-center rounded-full border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
+    <div
+      id="theme-toggle"
+      phx-hook="ThemeToggle"
+      class="flex items-center gap-0.5 rounded-full border border-zinc-300 bg-zinc-100 p-1 dark:border-zinc-700 dark:bg-zinc-800"
+    >
+      <.link
+        :if={@current_scope && @current_scope.user}
+        href={~p"/users/settings"}
+        title="Settings"
+        aria-label="Settings"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+      >
+        <.icon name="hero-cog-6-tooth" class="size-4" />
+      </.link>
+
+      <span :if={@current_scope && @current_scope.user} class="w-px self-stretch bg-zinc-300 dark:bg-zinc-600 mx-0.5"></span>
+
       <button
-        class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
+        data-theme-btn="system"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="system"
         title="System"
         type="button"
+        aria-label="System theme"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
       >
-        SYS
+        <.icon name="hero-computer-desktop" class="size-4" />
       </button>
 
       <button
-        class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
+        data-theme-btn="light"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="light"
         title="Light"
         type="button"
+        aria-label="Light theme"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
       >
-        LGT
+        <.icon name="hero-sun" class="size-4" />
       </button>
 
       <button
-        class="rounded-full px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
+        data-theme-btn="dark"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="dark"
         title="Dark"
         type="button"
+        aria-label="Dark theme"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
       >
-        DRK
+        <.icon name="hero-moon" class="size-4" />
       </button>
     </div>
     """

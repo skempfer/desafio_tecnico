@@ -122,56 +122,51 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   """
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <.header>
-        Control Room
-        <:subtitle>Real-time machine heartbeat overview</:subtitle>
-        <:actions>
-          <div class="flex flex-wrap items-center justify-end gap-3">
-            <div
-              id="dashboard-connection-status"
-              phx-hook="ConnectionStatus"
-              data-state="disconnected"
-              class="group inline-flex min-w-28 flex-col items-end rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-            >
-              <div class="text-xs leading-5 text-right">
-                <p class="font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Connection</p>
-                <p data-role="connection-label" role="status" aria-live="polite" class="inline-flex items-center justify-end gap-2 font-medium text-zinc-800 dark:text-zinc-100">
-                  <span
-                    class="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)] transition-colors duration-300 group-data-[state=disconnected]:bg-amber-500 group-data-[state=disconnected]:shadow-[0_0_0_4px_rgba(245,158,11,0.18)]"
-                  />
-                  Live
-                </p>
-              </div>
-            </div>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      page_title="Control Room"
+      page_subtitle="Real-time machine heartbeat overview"
+    >
+      <div class="mb-4 flex flex-col gap-3 sm:flex-row">
+        <div
+          id="dashboard-connection-status"
+          phx-hook="ConnectionStatus"
+          data-state="disconnected"
+          class="group flex flex-1 items-center justify-between rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <p class="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Connection</p>
+          <p data-role="connection-label" role="status" aria-live="polite" class="inline-flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
+            <span
+              class="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)] transition-colors duration-300 group-data-[state=disconnected]:bg-amber-500 group-data-[state=disconnected]:shadow-[0_0_0_4px_rgba(245,158,11,0.18)]"
+            />
+            Live
+          </p>
+        </div>
 
-            <div class="inline-flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div class="text-xs leading-5">
-                <p class="font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Next update in</p>
-              </div>
+        <div class="flex flex-1 items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <p class="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Next update in</p>
 
-              <div class="relative size-10">
-                <svg viewBox="0 0 40 40" class="size-10 -rotate-90" role="img" aria-label="Auto refresh countdown">
-                  <circle cx="20" cy="20" r="16" class="fill-none stroke-zinc-200 dark:stroke-zinc-700" stroke-width="4" />
-                  <circle
-                    cx="20"
-                    cy="20"
-                    r="16"
-                    class="fill-none stroke-indigo-500 transition-all duration-700 ease-linear"
-                    stroke-width="4"
-                    stroke-linecap="round"
-                    stroke-dasharray={@countdown_circumference}
-                    stroke-dashoffset={countdown_offset(@seconds_until_refresh, @auto_refresh_seconds)}
-                  />
-                </svg>
-                <div id="dashboard-refresh-seconds" class="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
-                  {@seconds_until_refresh}
-                </div>
-              </div>
+          <div class="relative size-10 shrink-0">
+            <svg viewBox="0 0 40 40" class="size-10 -rotate-90" role="img" aria-label="Auto refresh countdown">
+              <circle cx="20" cy="20" r="16" class="fill-none stroke-zinc-200 dark:stroke-zinc-700" stroke-width="4" />
+              <circle
+                cx="20"
+                cy="20"
+                r="16"
+                class="fill-none stroke-indigo-500 transition-all duration-700 ease-linear"
+                stroke-width="4"
+                stroke-linecap="round"
+                stroke-dasharray={@countdown_circumference}
+                stroke-dashoffset={countdown_offset(@seconds_until_refresh, @auto_refresh_seconds)}
+              />
+            </svg>
+            <div id="dashboard-refresh-seconds" class="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
+              {@seconds_until_refresh}
             </div>
           </div>
-        </:actions>
-      </.header>
+        </div>
+      </div>
 
       <section class="mb-5">
         <form id="dashboard-search" phx-change="search" phx-submit="search" class="flex items-center gap-2">
@@ -203,7 +198,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         </form>
       </section>
 
-      <section class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <section class="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
         <button
           type="button"
           phx-click="set_status_filter"
@@ -212,7 +207,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           class={summary_card_class(@status_filter == "all", "zinc")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Nodes</p>
-          <p class="mt-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">{@status_counts.all}</p>
+          <p class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">{@status_counts.all}</p>
         </button>
         <button
           type="button"
@@ -222,7 +217,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           class={summary_card_class(@status_filter == "online", "emerald")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Online</p>
-          <p class="mt-2 text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{@status_counts.online}</p>
+          <p class="text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{@status_counts.online}</p>
         </button>
         <button
           type="button"
@@ -232,7 +227,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           class={summary_card_class(@status_filter == "degraded", "amber")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Degraded</p>
-          <p class="mt-2 text-2xl font-semibold text-amber-900 dark:text-amber-200">{@status_counts.degraded}</p>
+          <p class="text-2xl font-semibold text-amber-900 dark:text-amber-200">{@status_counts.degraded}</p>
         </button>
         <button
           type="button"
@@ -242,7 +237,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           class={summary_card_class(@status_filter == "offline", "rose")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-rose-700 dark:text-rose-300">Offline</p>
-          <p class="mt-2 text-2xl font-semibold text-rose-900 dark:text-rose-200">{@status_counts.offline}</p>
+          <p class="text-2xl font-semibold text-rose-900 dark:text-rose-200">{@status_counts.offline}</p>
         </button>
         <button
           type="button"
@@ -252,7 +247,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           class={summary_card_class(@status_filter == "unknown", "indigo")}
         >
           <p class="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Others</p>
-          <p class="mt-2 text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{@status_counts.unknown}</p>
+          <p class="text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{@status_counts.unknown}</p>
         </button>
       </section>
 
@@ -664,7 +659,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp summary_card_class(true, color) do
     base =
-      "rounded-xl border p-4 text-left shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/40 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+      "flex items-center justify-between rounded-xl border px-2 py-3 sm:px-4 shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/40 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
 
     case color do
       "zinc" ->
@@ -686,7 +681,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp summary_card_class(false, color) do
     base =
-      "rounded-xl border p-4 text-left shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/30 hover:brightness-110"
+      "flex items-center justify-between rounded-xl border px-2 py-3 sm:px-4 shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/30 hover:brightness-110"
 
     case color do
       "zinc" ->
