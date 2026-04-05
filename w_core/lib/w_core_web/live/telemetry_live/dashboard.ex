@@ -35,6 +35,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     end
 
     page = parse_page(Map.get(params, "page"))
+    search_query = parse_search_query(Map.get(params, "q"))
 
     socket =
       socket
@@ -49,6 +50,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:has_prev, false)
       |> assign(:has_next, false)
       |> assign(:visible_node_ids, MapSet.new())
+      |> assign(:search_query, search_query)
       |> assign(:countdown_circumference, @countdown_circumference)
       |> assign(:seconds_until_refresh, @auto_refresh_seconds)
       |> load_page(page)
@@ -95,6 +97,36 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         </:actions>
       </.header>
 
+      <section class="mb-5">
+        <form id="dashboard-search" phx-change="search" phx-submit="search" class="flex items-center gap-2">
+          <label for="dashboard-search-query" class="sr-only">Search machines</label>
+          <div class="relative w-full">
+            <.icon
+              name="hero-magnifying-glass"
+              class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
+            />
+            <input
+              id="dashboard-search-query"
+              type="text"
+              name="search[query]"
+              value={@search_query}
+              phx-debounce="300"
+              placeholder="Search by machine or location"
+              autocomplete="off"
+              class="w-full rounded-lg border border-zinc-300 bg-white py-2 pl-10 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+            />
+          </div>
+          <button
+            :if={@search_query != ""}
+            type="button"
+            phx-click="clear_search"
+            class="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800/70 dark:bg-rose-900/30 dark:text-rose-300 dark:hover:bg-rose-900/40"
+          >
+            Clear
+          </button>
+        </form>
+      </section>
+
       <section class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Nodes</p>
@@ -128,7 +160,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
           <tbody class="divide-y divide-zinc-200 text-zinc-800 dark:divide-zinc-800 dark:text-zinc-200">
             <tr :if={Enum.empty?(@rows)}>
               <td colspan="5" class="px-5 py-10 text-center text-zinc-500 dark:text-zinc-400">
-                No telemetry nodes found for this account yet.
+                {empty_state_text(@search_query)}
               </td>
             </tr>
             <tr
@@ -193,6 +225,28 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   @impl true
   def handle_event("next_page", _params, socket) do
     {:noreply, load_page(socket, socket.assigns.page + 1)}
+  end
+
+  @impl true
+  def handle_event("search", %{"search" => %{"query" => query}}, socket) do
+    query = parse_search_query(query)
+
+    socket =
+      if query == socket.assigns.search_query do
+        socket
+      else
+        assign(socket, :search_query, query)
+      end
+
+    {:noreply, load_page(socket, 1)}
+  end
+
+  @impl true
+  def handle_event("clear_search", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:search_query, "")
+     |> load_page(1)}
   end
 
   @impl true
@@ -277,6 +331,15 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp parse_page(_), do: 1
 
+  defp parse_search_query(nil), do: ""
+
+  defp parse_search_query(query) when is_binary(query) do
+    query
+    |> String.trim()
+  end
+
+  defp parse_search_query(_), do: ""
+
   defp load_page(socket, requested_page) do
     scope = socket.assigns.current_scope
 
@@ -284,7 +347,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       Telemetry.list_nodes_with_hot_state_paginated(
         scope,
         page: requested_page,
-        per_page: @nodes_per_page
+        per_page: @nodes_per_page,
+        search: socket.assigns.search_query
       )
 
     if socket.assigns.refresh_timer_ref do
@@ -313,6 +377,9 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   defp count_by_status(rows, status) do
     Enum.count(rows, &(&1.status == status))
   end
+
+  defp empty_state_text(""), do: "No telemetry nodes found for this account yet."
+  defp empty_state_text(_query), do: "No machines match your search."
 
   defp mark_refreshed(socket) do
     socket
