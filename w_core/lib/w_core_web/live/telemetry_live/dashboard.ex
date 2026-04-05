@@ -64,6 +64,31 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   end
 
   @impl true
+  def handle_params(params, _uri, socket) do
+    page = parse_page(Map.get(params, "page"))
+    search_query = parse_search_query(Map.get(params, "q"))
+    status_filter = normalize_status_filter(Map.get(params, "status"))
+    sort_by = normalize_sort_by(Map.get(params, "sort_by"))
+    sort_dir = normalize_sort_dir(Map.get(params, "sort_dir"))
+
+    if page == socket.assigns.page and
+         search_query == socket.assigns.search_query and
+         status_filter == socket.assigns.status_filter and
+         sort_by == socket.assigns.sort_by and
+         sort_dir == socket.assigns.sort_dir do
+      {:noreply, socket}
+    else
+      {:noreply,
+       socket
+       |> assign(:search_query, search_query)
+       |> assign(:status_filter, status_filter)
+       |> assign(:sort_by, sort_by)
+       |> assign(:sort_dir, sort_dir)
+       |> load_page(page)}
+    end
+  end
+
+  @impl true
   @doc """
   Renders the Control Room table with machine status information.
   """
@@ -283,20 +308,27 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   @impl true
   def handle_event("prev_page", _params, socket) do
-    {:noreply, load_page(socket, socket.assigns.page - 1)}
+    target_page = max(1, socket.assigns.page - 1)
+
+    {:noreply, patch_to(socket, %{"page" => Integer.to_string(target_page)})}
   end
 
   @impl true
   def handle_event("next_page", _params, socket) do
-    {:noreply, load_page(socket, socket.assigns.page + 1)}
+    target_page = socket.assigns.page + 1
+
+    {:noreply, patch_to(socket, %{"page" => Integer.to_string(target_page)})}
   end
 
   @impl true
   def handle_event("set_status_filter", %{"status" => status}, socket) do
+    normalized_status = normalize_status_filter(status)
+
     {:noreply,
-     socket
-     |> assign(:status_filter, normalize_status_filter(status))
-     |> load_page(1)}
+     patch_to(socket, %{
+       "status" => normalized_status,
+       "page" => "1"
+     })}
   end
 
   @impl true
@@ -311,32 +343,27 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       end
 
     {:noreply,
-     socket
-     |> assign(:sort_by, sort_by)
-     |> assign(:sort_dir, sort_dir)
-     |> load_page(1)}
+     patch_to(socket, %{
+       "sort_by" => sort_by,
+       "sort_dir" => sort_dir,
+       "page" => "1"
+     })}
   end
 
   @impl true
   def handle_event("search", %{"search" => %{"query" => query}}, socket) do
     query = parse_search_query(query)
 
-    socket =
-      if query == socket.assigns.search_query do
-        socket
-      else
-        assign(socket, :search_query, query)
-      end
-
-    {:noreply, load_page(socket, 1)}
+    if query == socket.assigns.search_query do
+      {:noreply, socket}
+    else
+      {:noreply, patch_to(socket, %{"q" => query, "page" => "1"})}
+    end
   end
 
   @impl true
   def handle_event("clear_search", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:search_query, "")
-     |> load_page(1)}
+    {:noreply, patch_to(socket, %{"q" => "", "page" => "1"})}
   end
 
   @impl true
@@ -457,8 +484,50 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp normalize_sort_by(_by), do: "machine"
 
+  defp normalize_sort_dir(dir) when is_binary(dir) do
+    case String.downcase(String.trim(dir)) do
+      "desc" -> "desc"
+      _ -> "asc"
+    end
+  end
+
+  defp normalize_sort_dir(_dir), do: "asc"
+
   defp toggle_sort_dir("asc"), do: "desc"
   defp toggle_sort_dir(_), do: "asc"
+
+  defp patch_to(socket, overrides) do
+    params =
+      socket
+      |> current_query_params()
+      |> Map.merge(overrides)
+      |> normalize_query_params()
+
+    push_patch(socket, to: ~p"/control-room?#{params}")
+  end
+
+  defp current_query_params(socket) do
+    %{
+      "page" => Integer.to_string(socket.assigns.page),
+      "q" => socket.assigns.search_query,
+      "status" => socket.assigns.status_filter,
+      "sort_by" => socket.assigns.sort_by,
+      "sort_dir" => socket.assigns.sort_dir
+    }
+  end
+
+  defp normalize_query_params(params) do
+    params
+    |> Enum.reduce(%{}, fn
+      {"page", "1"}, acc -> acc
+      {"q", ""}, acc -> acc
+      {"status", "all"}, acc -> acc
+      {"sort_by", "machine"}, acc -> acc
+      {"sort_dir", "asc"}, acc -> acc
+      {key, value}, acc when is_binary(value) -> Map.put(acc, key, value)
+      {_key, _value}, acc -> acc
+    end)
+  end
 
   defp load_page(socket, requested_page) do
     scope = socket.assigns.current_scope

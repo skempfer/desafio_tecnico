@@ -217,4 +217,63 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
 
     assert html =~ "Events ↓"
   end
+
+  test "syncs pagination, filter and search with URL params", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Enum.each(1..25, fn i ->
+      machine_identifier = "sensor-#{String.pad_leading(Integer.to_string(i), 2, "0")}"
+      Telemetry.create_node(scope, %{machine_identifier: machine_identifier, location: "lab"})
+    end)
+
+    ts = ~U[2026-04-05 10:00:00Z]
+    Ingester.ingest_event("sensor-21", "offline", %{}, ts)
+    Process.sleep(80)
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    lv
+    |> element("button[aria-label='Go to next page']")
+    |> render_click()
+
+    assert_patch(lv, ~p"/control-room?page=2")
+
+    lv
+    |> element("button[phx-value-status='offline']")
+    |> render_click()
+
+    assert_patch(lv, ~p"/control-room?page=1&status=offline")
+
+    lv
+    |> form("#dashboard-search", search: %{query: "sensor-21"})
+    |> render_change()
+
+    assert_patch(lv, ~p"/control-room?page=1&q=sensor-21&status=offline")
+  end
+
+  test "loads dashboard state from URL params", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+
+    Telemetry.create_node(scope, %{machine_identifier: "node-a", location: "A"})
+    Telemetry.create_node(scope, %{machine_identifier: "node-b", location: "B"})
+
+    ts = ~U[2026-04-05 11:00:00Z]
+    Ingester.ingest_event("node-b", "offline", %{}, ts)
+    Process.sleep(80)
+
+    {:ok, _lv, html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room?status=offline&q=node-b&sort_by=events&sort_dir=desc")
+
+    assert html =~ "Showing 1 of 1 machines"
+    assert html =~ "node-b"
+    refute html =~ "node-a"
+    assert html =~ "Events ↓"
+  end
 end
