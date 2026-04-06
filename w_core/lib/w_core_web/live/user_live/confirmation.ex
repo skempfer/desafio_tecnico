@@ -1,9 +1,20 @@
 defmodule WCoreWeb.UserLive.Confirmation do
+  @moduledoc """
+  Magic-link confirmation screen.
+
+  This LiveView validates the incoming token, presents confirmation options,
+  and triggers the final login submission flow.
+  """
+
   use WCoreWeb, :live_view
 
   alias WCore.Accounts
 
+  @typedoc "Payload submitted by the confirmation form."
+  @type confirmation_params :: %{optional(String.t()) => String.t()}
+
   @impl true
+  @doc "Renders confirmation actions for first-time and returning users."
   @spec render(term()) :: term()
   def render(assigns) do
     ~H"""
@@ -99,6 +110,7 @@ defmodule WCoreWeb.UserLive.Confirmation do
   end
 
   @impl true
+  @doc "Loads the user from the magic-link token or redirects if invalid."
   @spec mount(term(), term(), term()) :: term()
   def mount(%{"token" => token}, _session, socket) do
     if user = Accounts.get_user_by_magic_link_token(token) do
@@ -115,7 +127,9 @@ defmodule WCoreWeb.UserLive.Confirmation do
   end
 
   @impl true
-  @spec handle_event(term(), term(), term()) :: term()
+  @doc "Marks the form to trigger HTTP submission for the selected option."
+  @spec handle_event(String.t(), %{"user" => confirmation_params()}, Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   def handle_event("submit", %{"user" => params}, socket) do
     {:noreply, assign(socket, form: to_form(params, as: "user"), trigger_submit: true)}
   end

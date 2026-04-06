@@ -1,8 +1,18 @@
 defmodule WCoreWeb.UserLive.Registration do
+  @moduledoc """
+  Registration and entry-point authentication screen.
+
+  This LiveView provides a single email-first flow where users can either
+  create an account or request a magic-link login.
+  """
+
   use WCoreWeb, :live_view
 
   alias WCore.Accounts
   alias WCore.Accounts.User
+
+  @typedoc "Parameters submitted from the registration form."
+  @type registration_params :: %{optional(String.t()) => String.t()}
 
   @impl true
   @spec render(term()) :: term()
@@ -21,10 +31,10 @@ defmodule WCoreWeb.UserLive.Registration do
             WCore Control Room
           </p>
           <h2 class="mt-2 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Criar conta ou entrar
+            Create account or sign in
           </h2>
           <p class="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-            Fluxo unico: login e cadastro por email, com o mesmo padrao visual da dashboard.
+            Single flow: sign in or register with email, using the same dashboard visual style.
           </p>
         </div>
 
@@ -33,13 +43,13 @@ defmodule WCoreWeb.UserLive.Registration do
             navigate={~p"/users/log-in"}
             class="inline-flex items-center justify-center rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
           >
-            Entrar
+            Sign in
           </.link>
           <.link
             navigate={~p"/users/register"}
             class="inline-flex items-center justify-center rounded-xl border border-indigo-500/35 bg-indigo-500/12 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-500/20 dark:border-indigo-400/40 dark:bg-indigo-400/15 dark:text-indigo-200"
           >
-            Cadastrar
+            Register
           </.link>
         </div>
 
@@ -57,14 +67,14 @@ defmodule WCoreWeb.UserLive.Registration do
           />
 
           <.button
-            phx-disable-with="Enviando link..."
+            phx-disable-with="Sending link..."
             class="mt-1 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/25 transition hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/30"
           >
-            Continuar
+            Continue
           </.button>
 
           <p class="text-center text-xs text-zinc-500 dark:text-zinc-400">
-            Ao continuar, voce recebe um email com link seguro para acesso.
+            By continuing, you will receive an email with a secure access link.
           </p>
         </.form>
       </section>
@@ -73,12 +83,14 @@ defmodule WCoreWeb.UserLive.Registration do
   end
 
   @impl true
+  @doc "Redirects authenticated users away from the registration screen."
   @spec mount(term(), term(), term()) :: term()
   def mount(_params, _session, %{assigns: %{current_scope: %{user: user}}} = socket)
       when not is_nil(user) do
     {:ok, redirect(socket, to: WCoreWeb.UserAuth.signed_in_path(socket))}
   end
 
+  @doc "Initializes the email registration form for unauthenticated users."
   @spec mount(term(), term(), term()) :: term()
   def mount(_params, _session, socket) do
     changeset = Accounts.change_user_email(%User{}, %{}, validate_unique: false)
@@ -87,6 +99,7 @@ defmodule WCoreWeb.UserLive.Registration do
   end
 
   @impl true
+  @doc "Handles registration submission and sends login instructions on success."
   @spec handle_event(term(), term(), term()) :: term()
   def handle_event("save", %{"user" => user_params}, socket) do
     case Accounts.register_user(user_params) do
@@ -110,11 +123,16 @@ defmodule WCoreWeb.UserLive.Registration do
     end
   end
 
+  @doc "Validates the registration form as the user types."
+  @spec handle_event(String.t(), %{"user" => registration_params()}, Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   def handle_event("validate", %{"user" => user_params}, socket) do
     changeset = Accounts.change_user_email(%User{}, user_params, validate_unique: false)
     {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
   end
 
+  @doc "Transforms a changeset into a LiveView form assign."
+  @spec assign_form(Phoenix.LiveView.Socket.t(), Ecto.Changeset.t()) :: Phoenix.LiveView.Socket.t()
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
     form = to_form(changeset, as: "user")
     assign(socket, form: form)

@@ -1,13 +1,22 @@
 defmodule WCoreWeb.UserLive.Login do
+  @moduledoc """
+  Redirect-only login LiveView.
+
+  Keeps `/users/log-in` compatible while forwarding users to the unified
+  registration/authentication entry point.
+  """
+
   use WCoreWeb, :live_view
 
   @impl true
+  @doc "Redirects all login traffic to the registration route."
   @spec mount(term(), term(), term()) :: term()
   def mount(_params, _session, socket) do
     {:ok, redirect(socket, to: ~p"/users/register")}
   end
 
   @impl true
+  @doc "Renders a fallback message while redirecting to registration."
   @spec render(term()) :: term()
   def render(assigns) do
     ~H"""
