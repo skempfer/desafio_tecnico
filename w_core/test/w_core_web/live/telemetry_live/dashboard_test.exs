@@ -51,7 +51,7 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
 
     html = render(lv)
     assert html =~ "DEGRADED"
-    assert html =~ "tabular-nums\">1</td>"
+    assert has_element?(lv, "#node-sensor-live td:nth-child(4)", "1")
   end
 
   test "paginates nodes with 20 rows per page", %{conn: conn} do
@@ -484,6 +484,86 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
 
     assert html =~ "Selected: 1"
     assert has_element?(lv, "button[phx-click='clear_selection']")
+  end
+
+  test "clicking a machine row expands paginated unresolved error history", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+    base_ts = ~U[2026-04-05 18:00:00Z]
+
+    Telemetry.create_node(scope, %{machine_identifier: "reactor-01", location: "Bay A"})
+
+    Enum.each(1..12, fn i ->
+      assert {:ok, _count} =
+               Ingester.ingest_event(
+                 "reactor-01",
+                 if(rem(i, 2) == 0, do: "offline", else: "degraded"),
+                 %{"message" => "Error #{i}"},
+                 DateTime.add(base_ts, i, :second)
+               )
+    end)
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    lv
+    |> element("#node-reactor-01")
+    |> render_click()
+
+    assert has_element?(lv, "#node-errors-reactor-01")
+    assert has_element?(lv, "#machine-error-history-panel", "Error history")
+    assert has_element?(lv, "#machine-error-history-panel", "Error 12")
+    refute has_element?(lv, "#machine-error-history-panel", "Error 2")
+
+    lv
+    |> element("button[aria-label='Go to next error page']")
+    |> render_click()
+
+    assert has_element?(lv, "#machine-error-history-panel", "Error 2")
+    assert has_element?(lv, "#machine-error-history-panel", "Error 1")
+    assert has_element?(lv, "#machine-error-history-panel", "Showing 2 of 12 errors")
+  end
+
+  test "resolving selected machine errors removes them from the expanded history", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+    base_ts = ~U[2026-04-05 19:00:00Z]
+
+    Telemetry.create_node(scope, %{machine_identifier: "reactor-02", location: "Bay B"})
+
+    Enum.each(1..2, fn i ->
+      assert {:ok, _count} =
+               Ingester.ingest_event(
+                 "reactor-02",
+                 "offline",
+                 %{"message" => "Fault #{i}"},
+                 DateTime.add(base_ts, i, :second)
+               )
+    end)
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    lv
+    |> element("#node-reactor-02")
+    |> render_click()
+
+    lv
+    |> form("#select-all-errors-form", %{"select_all_errors" => "true"})
+    |> render_change()
+
+    html =
+      lv
+      |> element("button[phx-click='resolve_selected_errors']")
+      |> render_click()
+
+    assert html =~ "No unresolved errors recorded for this machine."
+    refute html =~ "Fault 1"
+    refute html =~ "Fault 2"
   end
 
   test "shows contextual empty state and allows resetting filters", %{conn: conn} do

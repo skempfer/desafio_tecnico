@@ -53,6 +53,17 @@ defmodule WCore.Telemetry do
           }
         }
 
+  @typedoc "Pagination result for a machine error history query."
+  @type machine_error_page :: %{
+          entries: [TelemetryEvent.t()],
+          page: pos_integer(),
+          per_page: pos_integer(),
+          total_entries: non_neg_integer(),
+          total_pages: pos_integer(),
+          has_prev: boolean(),
+          has_next: boolean()
+        }
+
   @default_nodes_per_page 20
   @max_nodes_per_page 100
 
@@ -333,9 +344,104 @@ defmodule WCore.Telemetry do
       machine_identifier: machine_identifier,
       status: status,
       payload: payload,
+      error_message: extract_error_message(status, payload),
       occurred_at: occurred_at
     })
     |> Repo.insert()
+  end
+
+  @doc """
+  Lists unresolved error events for a machine in descending occurrence order.
+
+  Results are scoped by the authenticated user through the registered node.
+  Only operational problem states are included in the history (`offline` and
+  `degraded`).
+  """
+  @spec list_machine_error_events(Scope.t(), String.t(), keyword()) :: machine_error_page()
+  def list_machine_error_events(%Scope{} = scope, machine_identifier, opts \\ []) do
+    requested_page = normalize_positive_int(Keyword.get(opts, :page), 1)
+
+    per_page =
+      opts
+      |> Keyword.get(:per_page, 10)
+      |> normalize_positive_int(10)
+      |> min(10)
+
+    case Repo.get_by(Node, user_id: scope.user.id, machine_identifier: machine_identifier) do
+      nil ->
+        empty_machine_error_page(per_page)
+
+      _node ->
+        base_query =
+          from(e in TelemetryEvent,
+            where: e.machine_identifier == ^machine_identifier,
+            where: e.status in ["offline", "degraded"],
+            where: is_nil(e.resolved_at),
+            order_by: [desc: e.occurred_at, desc: e.id]
+          )
+
+        total_entries = Repo.aggregate(base_query, :count)
+        total_pages = max(1, div(total_entries + per_page - 1, per_page))
+        page = min(requested_page, total_pages)
+        offset = (page - 1) * per_page
+
+        entries =
+          base_query
+          |> limit(^per_page)
+          |> offset(^offset)
+          |> Repo.all()
+
+        %{
+          entries: entries,
+          page: page,
+          per_page: per_page,
+          total_entries: total_entries,
+          total_pages: total_pages,
+          has_prev: page > 1,
+          has_next: page < total_pages
+        }
+    end
+  end
+
+  @doc """
+  Marks the given telemetry events as resolved for a machine owned by the scope.
+
+  Returns the number of updated rows. Events already resolved remain unchanged.
+  """
+  @spec resolve_machine_error_events(Scope.t(), String.t(), [pos_integer()]) :: non_neg_integer()
+  def resolve_machine_error_events(%Scope{} = scope, machine_identifier, event_ids)
+      when is_list(event_ids) do
+    case Repo.get_by(Node, user_id: scope.user.id, machine_identifier: machine_identifier) do
+      nil ->
+        0
+
+      %Node{} = node ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+        {:ok, updated_count} =
+          Repo.transaction(fn ->
+            updated_count =
+              from(e in TelemetryEvent,
+                where: e.id in ^event_ids,
+                where: e.machine_identifier == ^machine_identifier,
+                where: e.status in ["offline", "degraded"],
+                where: is_nil(e.resolved_at)
+              )
+              |> Repo.update_all(set: [resolved_at: now])
+              |> elem(0)
+
+            maybe_mark_machine_online_after_resolution(
+              node,
+              machine_identifier,
+              now,
+              updated_count
+            )
+
+            updated_count
+          end)
+
+        updated_count
+    end
   end
 
   @doc """
@@ -710,6 +816,122 @@ defmodule WCore.Telemetry do
   @spec get_node_by_machine_identifier(String.t()) :: Node.t() | nil
   def get_node_by_machine_identifier(machine_id) do
     Repo.get_by(Node, machine_identifier: machine_id)
+  end
+
+  defp extract_error_message(status, payload) when status in ["offline", "degraded"] do
+    payload
+    |> find_error_message()
+    |> case do
+      nil -> default_error_message(status)
+      message -> message
+    end
+  end
+
+  defp extract_error_message(_status, _payload), do: nil
+
+  defp find_error_message(payload) when is_map(payload) do
+    ["error_message", "message", "reason", "error", "detail", "code"]
+    |> Enum.find_value(fn key ->
+      Map.get(payload, key) || Map.get(payload, String.to_atom(key))
+    end)
+    |> case do
+      nil -> nil
+      value when is_binary(value) and value != "" -> value
+      value when is_integer(value) -> Integer.to_string(value)
+      value when is_atom(value) -> Atom.to_string(value)
+      _ -> nil
+    end
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp find_error_message(_payload), do: nil
+
+  defp default_error_message("offline"), do: "Machine reported offline"
+  defp default_error_message("degraded"), do: "Machine reported degraded state"
+  defp default_error_message(_status), do: "Telemetry error event"
+
+  defp empty_machine_error_page(per_page) do
+    %{
+      entries: [],
+      page: 1,
+      per_page: per_page,
+      total_entries: 0,
+      total_pages: 1,
+      has_prev: false,
+      has_next: false
+    }
+  end
+
+  defp maybe_mark_machine_online_after_resolution(
+         _node,
+         _machine_identifier,
+         _resolved_at,
+         updated_count
+       )
+       when updated_count <= 0,
+       do: :ok
+
+  defp maybe_mark_machine_online_after_resolution(
+         %Node{} = node,
+         machine_identifier,
+         resolved_at,
+         _updated_count
+       ) do
+    unresolved_remaining =
+      from(e in TelemetryEvent,
+        where: e.machine_identifier == ^machine_identifier,
+        where: e.status in ["offline", "degraded"],
+        where: is_nil(e.resolved_at)
+      )
+      |> Repo.aggregate(:count)
+
+    if unresolved_remaining == 0 do
+      {total_events_processed, last_payload} =
+        current_snapshot_for_status_sync(node, machine_identifier)
+
+      upsert_attrs = %{
+        status: "online",
+        total_events_processed: total_events_processed,
+        last_payload: last_payload,
+        last_seen_at: resolved_at
+      }
+
+      case upsert_node_metric(node, upsert_attrs) do
+        {:ok, _metric} ->
+          Cache.put_snapshot(
+            machine_identifier,
+            "online",
+            total_events_processed,
+            last_payload,
+            resolved_at
+          )
+
+          broadcast_dashboard_node_changed(machine_identifier, total_events_processed, resolved_at)
+          :ok
+
+        {:error, _changeset} ->
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
+  defp current_snapshot_for_status_sync(%Node{} = node, machine_identifier) do
+    case Cache.get(machine_identifier) do
+      {_status, count, payload, _timestamp} ->
+        {count, payload || %{}}
+
+      nil ->
+        case Repo.get_by(NodeMetrics, node_id: node.id) do
+          %NodeMetrics{} = metric ->
+            {metric.total_events_processed || 0, metric.last_payload || %{}}
+
+          nil ->
+            {0, %{}}
+        end
+    end
   end
 
   @dashboard_topic "telemetry:dashboard"

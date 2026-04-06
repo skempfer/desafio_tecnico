@@ -13,6 +13,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   @refresh_delay_ms 50
   @nodes_per_page 20
+  @machine_errors_per_page 10
   @default_auto_refresh_seconds 10
   @min_auto_refresh_seconds 1
   @max_auto_refresh_seconds 60
@@ -65,6 +66,15 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:seconds_until_refresh, auto_refresh_seconds)
       |> assign(:selected_ids, MapSet.new())
       |> assign(:select_all_pages, false)
+      |> assign(:expanded_machine_id, nil)
+      |> assign(:loading_machine_id, nil)
+      |> assign(:error_rows, [])
+      |> assign(:error_page, 1)
+      |> assign(:error_total_entries, 0)
+      |> assign(:error_total_pages, 1)
+      |> assign(:error_has_prev, false)
+      |> assign(:error_has_next, false)
+      |> assign(:selected_error_ids, MapSet.new())
       |> load_page(page, :mount)
 
     {:ok,
@@ -335,31 +345,171 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
                 </button>
               </td>
             </tr>
-            <tr
-              :for={row <- @rows}
-              id={"node-#{row.machine_identifier}"}
-              class="transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
-            >
-              <td class="px-5 py-3.5 font-medium">{row.machine_identifier}</td>
-              <td class="px-5 py-3.5 text-zinc-600 dark:text-zinc-300">{row.location}</td>
-              <td class="px-5 py-3.5"><.status_badge status={row.status} /></td>
-              <td class="px-5 py-3.5 tabular-nums">{row.total_events_processed}</td>
-              <td class="px-5 py-3.5 tabular-nums text-zinc-600 dark:text-zinc-300">{format_ts(row.last_seen_at)}</td>
-              <td class="w-10 px-3 py-3.5 text-center">
-                <form id={"row-select-#{row.machine_identifier}"} phx-change="toggle_row_select" class="inline-flex">
-                  <input type="hidden" name="row_id" value={row.machine_identifier} />
-                  <input type="hidden" name="selected" value="false" />
-                  <input
-                    type="checkbox"
-                    name="selected"
-                    value="true"
-                    checked={@select_all_pages or MapSet.member?(@selected_ids, row.machine_identifier)}
-                    aria-label={"Select #{row.machine_identifier}"}
-                    class="size-4 cursor-pointer rounded border-zinc-300 text-indigo-600 accent-indigo-600 focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
-                  />
-                </form>
-              </td>
-            </tr>
+            <%= for row <- @rows do %>
+              <tr
+                id={"node-#{row.machine_identifier}"}
+                phx-click="toggle_machine_errors"
+                phx-value-machine={row.machine_identifier}
+                class="cursor-pointer transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+              >
+                <td class="px-5 py-3.5 font-medium">
+                  <span class="inline-flex items-center gap-2">
+                    {row.machine_identifier}
+                    <svg
+                      :if={@loading_machine_id == row.machine_identifier}
+                      class="size-3.5 animate-spin text-indigo-500 dark:text-indigo-400" style="animation-duration: 0.9s"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  </span>
+                </td>
+                <td class="px-5 py-3.5 text-zinc-600 dark:text-zinc-300">
+                  {row.location}
+                </td>
+                <td class="px-5 py-3.5">
+                  <.status_badge status={row.status} />
+                </td>
+                <td class="px-5 py-3.5 tabular-nums">
+                  {row.total_events_processed}
+                </td>
+                <td class="px-5 py-3.5 tabular-nums text-zinc-600 dark:text-zinc-300">
+                  {format_ts(row.last_seen_at)}
+                </td>
+                <td class="w-10 px-3 py-3.5 text-center" phx-click.stop="">
+                  <form id={"row-select-#{row.machine_identifier}"} phx-change="toggle_row_select" class="inline-flex">
+                    <input type="hidden" name="row_id" value={row.machine_identifier} />
+                    <input type="hidden" name="selected" value="false" />
+                    <input
+                      type="checkbox"
+                      name="selected"
+                      value="true"
+                      checked={@select_all_pages or MapSet.member?(@selected_ids, row.machine_identifier)}
+                      aria-label={"Select #{row.machine_identifier}"}
+                      class="size-4 cursor-pointer rounded border-zinc-300 text-indigo-600 accent-indigo-600 focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
+                    />
+                  </form>
+                </td>
+              </tr>
+              <tr :if={@expanded_machine_id == row.machine_identifier} id={"node-errors-#{row.machine_identifier}"}>
+                <td colspan="6" class="bg-zinc-100/70 px-5 py-4 dark:bg-zinc-950/30">
+                  <div id="machine-error-history-panel" class="rounded-xl border border-zinc-300 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Error history</p>
+                      <p class="text-xs text-zinc-500 dark:text-zinc-400">
+                        {row.machine_identifier} · {@error_total_entries} unresolved errors
+                      </p>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        phx-click="resolve_selected_errors"
+                        disabled={MapSet.size(@selected_error_ids) == 0}
+                        class="inline-flex items-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition enabled:hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400 dark:border-emerald-700/50 dark:bg-emerald-900/20 dark:text-emerald-300 dark:enabled:hover:bg-emerald-900/30 dark:disabled:border-zinc-700 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500"
+                      >
+                        Resolve selected
+                      </button>
+                      <button
+                        type="button"
+                        phx-click="collapse_machine_errors"
+                        class="inline-flex items-center rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+
+                  <div :if={Enum.empty?(@error_rows)} class="mt-4 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-5 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400">
+                    No unresolved errors recorded for this machine.
+                  </div>
+
+                  <div :if={not Enum.empty?(@error_rows)} class="mt-4 overflow-hidden rounded-lg border border-zinc-300 dark:border-zinc-800">
+                    <table class="w-full border-collapse text-left text-sm">
+                      <thead class="border-b border-zinc-300 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-300">
+                        <tr>
+                          <th class="px-4 py-3 font-semibold">Error</th>
+                          <th class="px-4 py-3 font-semibold">Occurred at</th>
+                          <th class="w-10 px-3 py-3 text-center">
+                            <form id="select-all-errors-form" phx-change="toggle_select_all_errors" class="inline-flex">
+                              <input type="hidden" name="select_all_errors" value="false" />
+                              <input
+                                type="checkbox"
+                                name="select_all_errors"
+                                value="true"
+                                checked={error_select_all_checked?(@error_rows, @selected_error_ids)}
+                                aria-label="Select all visible errors"
+                                class="size-4 cursor-pointer rounded border-zinc-300 text-emerald-600 accent-emerald-600 focus:ring-2 focus:ring-emerald-500 dark:border-zinc-600 dark:bg-zinc-800"
+                              />
+                            </form>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-zinc-200 bg-white dark:divide-zinc-800 dark:bg-zinc-900">
+                        <tr :for={event <- @error_rows} id={"machine-error-#{event.id}"}>
+                          <td class="px-4 py-3.5 text-zinc-800 dark:text-zinc-200">{event.error_message}</td>
+                          <td class="px-4 py-3.5 tabular-nums text-zinc-500 dark:text-zinc-400">{format_ts(event.occurred_at)}</td>
+                          <td class="w-10 px-3 py-3.5 text-center">
+                            <form id={"error-select-#{event.id}"} phx-change="toggle_error_select" class="inline-flex">
+                              <input type="hidden" name="error_id" value={event.id} />
+                              <input type="hidden" name="selected" value="false" />
+                              <input
+                                type="checkbox"
+                                name="selected"
+                                value="true"
+                                checked={MapSet.member?(@selected_error_ids, event.id)}
+                                aria-label={"Select error #{event.id}"}
+                                class="size-4 cursor-pointer rounded border-zinc-300 text-emerald-600 accent-emerald-600 focus:ring-2 focus:ring-emerald-500 dark:border-zinc-600 dark:bg-zinc-800"
+                              />
+                            </form>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div :if={not Enum.empty?(@error_rows)} class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Showing {length(@error_rows)} of {@error_total_entries} errors
+                    </p>
+
+                    <div class="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-zinc-50 px-2 py-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+                      <button
+                        type="button"
+                        phx-click="set_error_page"
+                        phx-value-page={max(@error_page - 1, 1)}
+                        disabled={!@error_has_prev}
+                        aria-label="Go to previous error page"
+                        class="inline-flex size-8 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-700 dark:disabled:text-zinc-600"
+                      >
+                        <.icon name="hero-chevron-left" class="size-4" />
+                      </button>
+
+                      <span class="min-w-16 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                        {@error_page} / {@error_total_pages}
+                      </span>
+
+                      <button
+                        type="button"
+                        phx-click="set_error_page"
+                        phx-value-page={@error_page + 1}
+                        disabled={!@error_has_next}
+                        aria-label="Go to next error page"
+                        class="inline-flex size-8 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-700 dark:disabled:text-zinc-600"
+                      >
+                        <.icon name="hero-chevron-right" class="size-4" />
+                      </button>
+                    </div>
+                  </div>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
           </tbody>
         </table>
 
@@ -520,6 +670,87 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   end
 
   @impl true
+  def handle_event("toggle_machine_errors", %{"machine" => machine_identifier}, socket) do
+    if socket.assigns.expanded_machine_id == machine_identifier do
+      {:noreply, clear_machine_errors(socket)}
+    else
+      delay = Application.get_env(:w_core, :error_history_loading_delay_ms, 900)
+      Process.send_after(self(), {:load_machine_errors, machine_identifier, 1}, delay)
+
+      {:noreply,
+       socket
+       |> clear_machine_errors()
+       |> assign(:loading_machine_id, machine_identifier)}
+    end
+  end
+
+  @impl true
+  def handle_info({:load_machine_errors, machine_identifier, page}, socket) do
+    socket =
+      socket
+      |> assign(:loading_machine_id, nil)
+      |> load_machine_errors(machine_identifier, page)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("collapse_machine_errors", _params, socket) do
+    {:noreply, clear_machine_errors(socket)}
+  end
+
+  @impl true
+  def handle_event("set_error_page", %{"page" => page}, socket) do
+    requested_page = parse_page(page)
+
+    {:noreply, load_machine_errors(socket, socket.assigns.expanded_machine_id, requested_page)}
+  end
+
+  @impl true
+  def handle_event("toggle_select_all_errors", params, socket) do
+    selected_error_ids =
+      if param_truthy?(params, "select_all_errors") do
+        socket.assigns.error_rows
+        |> Enum.map(& &1.id)
+        |> MapSet.new()
+      else
+        MapSet.new()
+      end
+
+    {:noreply, assign(socket, :selected_error_ids, selected_error_ids)}
+  end
+
+  @impl true
+  def handle_event("toggle_error_select", %{"error_id" => error_id} = params, socket) do
+    selected = param_truthy?(params, "selected")
+    error_id = parse_int(error_id)
+
+    selected_error_ids =
+      if selected do
+        MapSet.put(socket.assigns.selected_error_ids, error_id)
+      else
+        MapSet.delete(socket.assigns.selected_error_ids, error_id)
+      end
+
+    {:noreply, assign(socket, :selected_error_ids, selected_error_ids)}
+  end
+
+  @impl true
+  def handle_event("resolve_selected_errors", _params, socket) do
+    if MapSet.size(socket.assigns.selected_error_ids) == 0 or is_nil(socket.assigns.expanded_machine_id) do
+      {:noreply, socket}
+    else
+      Telemetry.resolve_machine_error_events(
+        socket.assigns.current_scope,
+        socket.assigns.expanded_machine_id,
+        MapSet.to_list(socket.assigns.selected_error_ids)
+      )
+
+      {:noreply, load_page(socket, socket.assigns.page, :error_resolution)}
+    end
+  end
+
+  @impl true
   def handle_event("export_csv", _params, socket) do
     scope = socket.assigns.current_scope
 
@@ -640,6 +871,12 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
   defp selection_count(_selected_ids, true, total_entries), do: total_entries
   defp selection_count(selected_ids, false, _total_entries), do: MapSet.size(selected_ids)
 
+  defp error_select_all_checked?([], _selected_error_ids), do: false
+
+  defp error_select_all_checked?(error_rows, selected_error_ids) do
+    Enum.all?(error_rows, &MapSet.member?(selected_error_ids, &1.id))
+  end
+
   defp build_csv(rows) do
     header = "Machine,Location,Status,Events,Last Seen\r\n"
 
@@ -680,6 +917,17 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp truthy_value?(value) when value in [true, "true", "on", "1"], do: true
   defp truthy_value?(_value), do: false
+
+  defp parse_int(value) when is_integer(value), do: value
+
+  defp parse_int(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, ""} -> parsed
+      _ -> 0
+    end
+  end
+
+  defp parse_int(_value), do: 0
 
   defp parse_page(nil), do: 1
 
@@ -829,13 +1077,55 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       }
     )
 
-    if source == :auto_refresh do
-      socket
-    else
-      socket
-      |> assign(:selected_ids, MapSet.new())
-      |> assign(:select_all_pages, false)
-    end
+    socket =
+      if source in [:auto_refresh, :error_resolution] do
+        if socket.assigns.expanded_machine_id &&
+             MapSet.member?(visible_node_ids, socket.assigns.expanded_machine_id) do
+          load_machine_errors(socket, socket.assigns.expanded_machine_id, socket.assigns.error_page)
+        else
+          clear_machine_errors(socket)
+        end
+      else
+        clear_machine_errors(socket)
+      end
+
+    socket
+    |> assign(:selected_ids, MapSet.new())
+    |> assign(:select_all_pages, false)
+  end
+
+  defp load_machine_errors(socket, nil, _page), do: clear_machine_errors(socket)
+
+  defp load_machine_errors(socket, machine_identifier, page) do
+    error_page =
+      Telemetry.list_machine_error_events(socket.assigns.current_scope, machine_identifier,
+        page: page,
+        per_page: @machine_errors_per_page
+      )
+
+    socket
+    |> assign(:expanded_machine_id, machine_identifier)
+    |> assign(:loading_machine_id, nil)
+    |> assign(:error_rows, error_page.entries)
+    |> assign(:error_page, error_page.page)
+    |> assign(:error_total_entries, error_page.total_entries)
+    |> assign(:error_total_pages, error_page.total_pages)
+    |> assign(:error_has_prev, error_page.has_prev)
+    |> assign(:error_has_next, error_page.has_next)
+    |> assign(:selected_error_ids, MapSet.new())
+  end
+
+  defp clear_machine_errors(socket) do
+    socket
+    |> assign(:expanded_machine_id, nil)
+    |> assign(:loading_machine_id, nil)
+    |> assign(:error_rows, [])
+    |> assign(:error_page, 1)
+    |> assign(:error_total_entries, 0)
+    |> assign(:error_total_pages, 1)
+    |> assign(:error_has_prev, false)
+    |> assign(:error_has_next, false)
+    |> assign(:selected_error_ids, MapSet.new())
   end
 
   defp emit_telemetry(event, measurements, metadata) do
@@ -844,7 +1134,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp summary_card_class(true, color) do
     base =
-      "flex items-center justify-between rounded-xl border px-2 py-3 sm:px-4 shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/40 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+      "cursor-pointer flex items-center justify-between rounded-xl border px-2 py-3 sm:px-4 shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/40 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
 
     case color do
       "zinc" ->
@@ -866,7 +1156,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   defp summary_card_class(false, color) do
     base =
-      "flex items-center justify-between rounded-xl border px-2 py-3 sm:px-4 shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/30 hover:brightness-110"
+      "cursor-pointer flex items-center justify-between rounded-xl border px-2 py-3 sm:px-4 shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/30 hover:brightness-110"
 
     case color do
       "zinc" ->
@@ -952,7 +1242,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       type="button"
       phx-click="sort"
       phx-value-by={@by}
-      class="group inline-flex items-center gap-1.5 font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
+      class="cursor-pointer group inline-flex items-center gap-1.5 font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
     >
       {render_slot(@inner_block)}
       <span

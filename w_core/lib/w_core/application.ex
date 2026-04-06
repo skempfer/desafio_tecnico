@@ -30,8 +30,9 @@ defmodule WCore.Application do
       WCoreWeb.Endpoint,
       {WCore.Telemetry.Cache, []},
       {WCore.Telemetry.Ingester, []},
-      {WCore.Telemetry.Worker, []}
+      telemetry_worker_spec()
     ]
+    |> Enum.filter(&(&1 != :ignore))
 
     opts = [strategy: :one_for_one, name: WCore.Supervisor]
     Supervisor.start_link(children, opts)
@@ -50,5 +51,14 @@ defmodule WCore.Application do
   defp skip_migrations? do
     # Run migrations automatically outside releases.
     System.get_env("RELEASE_NAME") == nil
+  end
+
+  defp telemetry_worker_spec do
+    # Skip Worker in test environment to avoid database conflicts with Ecto Sandbox
+    if Mix.env() == :test do
+      :ignore
+    else
+      {WCore.Telemetry.Worker, []}
+    end
   end
 end
