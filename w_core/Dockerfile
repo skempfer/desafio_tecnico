@@ -35,12 +35,14 @@ RUN mix release
 FROM ${RUNNER_IMAGE} AS runner
 
 RUN apt-get update && \
-  apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 sqlite3 ca-certificates && \
+  apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 sqlite3 ca-certificates curl && \
   rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN mkdir -p /app/data
+RUN addgroup --system --gid 1001 wcore && \
+  adduser --system --uid 1001 --ingroup wcore --home /app wcore && \
+  mkdir -p /app/data
 
 ENV MIX_ENV=prod \
   PHX_SERVER=true \
@@ -49,7 +51,14 @@ ENV MIX_ENV=prod \
 
 COPY --from=builder /app/_build/prod/rel/w_core ./
 
+RUN chown -R wcore:wcore /app
+
 EXPOSE 4000
 VOLUME ["/app/data"]
+
+USER wcore
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
+  CMD sh -c "curl -fsS http://127.0.0.1:${PORT}/ >/dev/null || exit 1"
 
 CMD ["sh", "-c", "bin/w_core eval \"Ecto.Migrator.with_repo(WCore.Repo, &Ecto.Migrator.run(&1, :up, all: true))\" && exec bin/w_core start"]
