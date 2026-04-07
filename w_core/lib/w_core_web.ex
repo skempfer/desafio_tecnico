@@ -93,6 +93,8 @@ defmodule WCoreWeb do
       import Phoenix.HTML
       # Core UI components
       import WCoreWeb.CoreComponents
+      # Telemetry dashboard components
+      import WCoreWeb.TelemetryComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

@@ -101,6 +101,19 @@ defmodule WCore.Telemetry.Cache do
   end
 
   @doc """
+  Writes a full cache snapshot for `node_id` without incrementing counters.
+
+  Useful when business actions (for example, resolving errors) need to update
+  status and timestamp while preserving a known `count`.
+  """
+  @spec put_snapshot(node_id(), node_status(), event_count(), payload(), event_timestamp()) ::
+          event_count()
+  def put_snapshot(node_id, status, count, payload, timestamp) do
+    :ets.insert(@table, {node_id, status, count, payload, timestamp})
+    count
+  end
+
+  @doc """
   Retrieves the cache entry for `node_id`.
 
   Returns `{status, count, payload, timestamp}` if found, or `nil` otherwise.

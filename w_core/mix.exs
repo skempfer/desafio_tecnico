@@ -77,6 +77,7 @@ defmodule WCore.MixProject do
 
   defp aliases do
     [
+      start: "phx.server",
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],

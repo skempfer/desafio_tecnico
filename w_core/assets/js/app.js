@@ -25,11 +25,179 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/w_core"
 import topbar from "../vendor/topbar"
 
+/**
+ * LiveView hook responsible for reflecting real-time socket connectivity
+ * in the dashboard connection card.
+ *
+ * Behavior:
+ * - Keeps data-state in sync with LiveSocket connection status.
+ * - Updates the visible label to "Live" or "Reconnecting".
+ * - Reacts to both LiveView and browser online/offline events.
+ */
+const ConnectionStatus = {
+  mounted() {
+    this.state = null
+
+    this.updateState(this.liveSocket.isConnected() ? "connected" : "disconnected")
+
+    this.handleConnected = () => this.updateState("connected")
+    this.handleDisconnected = () => this.updateState("disconnected")
+    this.handleBrowserOnline = () => this.syncFromSocket()
+    this.handleBrowserOffline = () => this.updateState("disconnected")
+
+    window.addEventListener("phx:connected", this.handleConnected)
+    window.addEventListener("phx:disconnected", this.handleDisconnected)
+    window.addEventListener("online", this.handleBrowserOnline)
+    window.addEventListener("offline", this.handleBrowserOffline)
+  },
+
+  destroyed() {
+    window.removeEventListener("phx:connected", this.handleConnected)
+    window.removeEventListener("phx:disconnected", this.handleDisconnected)
+    window.removeEventListener("online", this.handleBrowserOnline)
+    window.removeEventListener("offline", this.handleBrowserOffline)
+  },
+
+  syncFromSocket() {
+    this.updateState(this.liveSocket.isConnected() ? "connected" : "disconnected")
+  },
+
+  updateState(state) {
+    if (this.state === state) {
+      return
+    }
+
+    this.state = state
+    this.el.dataset.state = state
+
+    const label = this.el.querySelector("[data-role='connection-label']")
+    if (label) {
+      label.textContent = state === "connected" ? "Live" : "Reconnecting"
+    }
+  },
+}
+
+/**
+ * LiveView hook that controls the dashboard table loading overlay.
+ *
+ * Behavior:
+ * - Tracks concurrent LiveView loading start/stop events.
+ * - Exposes loading state through data-loading for CSS-driven UI.
+ * - Uses a fallback timeout to avoid a stuck loading state if a stop
+ *   event is missed due to navigation or interruption.
+ */
+const DashboardLoading = {
+  mounted() {
+    this.activeLoads = 0
+    this.fallbackTimer = null
+
+    this.clearFallbackTimer = () => {
+      if (!this.fallbackTimer) {
+        return
+      }
+
+      clearTimeout(this.fallbackTimer)
+      this.fallbackTimer = null
+    }
+
+    this.startFallbackTimer = () => {
+      this.clearFallbackTimer()
+      this.fallbackTimer = setTimeout(() => {
+        this.activeLoads = 0
+        this.setLoading(false)
+      }, 5000)
+    }
+
+    this.onStart = () => {
+      this.activeLoads += 1
+      this.setLoading(true)
+      this.startFallbackTimer()
+    }
+
+    this.onStop = () => {
+      this.activeLoads = Math.max(0, this.activeLoads - 1)
+
+      if (this.activeLoads === 0) {
+        this.clearFallbackTimer()
+        this.setLoading(false)
+      }
+    }
+
+    window.addEventListener("phx:page-loading-start", this.onStart)
+    window.addEventListener("phx:page-loading-stop", this.onStop)
+  },
+
+  destroyed() {
+    window.removeEventListener("phx:page-loading-start", this.onStart)
+    window.removeEventListener("phx:page-loading-stop", this.onStop)
+    this.clearFallbackTimer()
+  },
+
+  setLoading(isLoading) {
+    this.el.dataset.loading = isLoading ? "true" : "false"
+  },
+}
+
+/**
+ * LiveView hook that highlights the active theme button in the ThemeToggle
+ * component. On mount and whenever the phx:set-theme event fires, it reads
+ * the current theme from localStorage and applies the active style to the
+ * matching [data-theme-btn] button while removing it from the others.
+ */
+const ThemeToggle = {
+  mounted() {
+    this.syncActive()
+    this.handler = () => this.syncActive()
+    window.addEventListener("phx:set-theme", this.handler)
+    window.addEventListener("storage", this.handler)
+  },
+
+  destroyed() {
+    window.removeEventListener("phx:set-theme", this.handler)
+    window.removeEventListener("storage", this.handler)
+  },
+
+  syncActive() {
+    const current = localStorage.getItem("phx:theme") || "system"
+    this.el.querySelectorAll("[data-theme-btn]").forEach(btn => {
+      const isActive = btn.dataset.themeBtn === current
+      btn.classList.toggle("bg-zinc-100", isActive)
+      btn.classList.toggle("dark:bg-zinc-600", isActive)
+      btn.classList.toggle("text-zinc-900", isActive)
+      btn.classList.toggle("dark:text-white", isActive)
+      btn.classList.toggle("shadow-sm", isActive)
+      btn.classList.toggle("text-zinc-500", !isActive)
+      btn.classList.toggle("dark:text-zinc-400", !isActive)
+    })
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+
+/**
+ * LiveView hook that listens for server-pushed download_csv events and
+ * triggers a browser file download with the provided CSV content.
+ */
+const CsvDownload = {
+  mounted() {
+    this.handleEvent("download_csv", ({csv, filename}) => {
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.style.display = "none"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    })
+  },
+}
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, ConnectionStatus, DashboardLoading, ThemeToggle, CsvDownload},
 })
 
 // Show progress bar on live navigation and form submits
@@ -80,4 +248,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-

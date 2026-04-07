@@ -12,45 +12,52 @@
     </script>
     <script>
       (() => {
+        const media = window.matchMedia("(prefers-color-scheme: dark)");
+
+        const resolveTheme = (theme) => {
+          if (theme === "system") {
+            return media.matches ? "dark" : "light";
+          }
+
+          return theme;
+        };
+
         const setTheme = (theme) => {
           if (theme === "system") {
-            localStorage.removeItem("phx:theme");
-            document.documentElement.removeAttribute("data-theme");
+            localStorage.setItem("phx:theme", "system");
           } else {
             localStorage.setItem("phx:theme", theme);
-            document.documentElement.setAttribute("data-theme", theme);
           }
+
+          document.documentElement.setAttribute("data-theme", resolveTheme(theme));
         };
+
+        const currentPreference = () => localStorage.getItem("phx:theme") || "system";
+
         if (!document.documentElement.hasAttribute("data-theme")) {
-          setTheme(localStorage.getItem("phx:theme") || "system");
+          setTheme(currentPreference());
         }
-        window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
-        
-        window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+
+        media.addEventListener("change", () => {
+          if (currentPreference() === "system") {
+            setTheme("system");
+          }
+        });
+
+        window.addEventListener("storage", (e) => {
+          if (e.key === "phx:theme") {
+            setTheme(e.newValue || "system");
+          }
+        });
+
+        window.addEventListener("phx:set-theme", (e) => {
+          const theme = e.detail?.theme || e.target?.dataset?.phxTheme || "system";
+          setTheme(theme);
+        });
       })();
     </script>
   </head>
-  <body>
-    <ul class="menu menu-horizontal w-full relative z-10 flex items-center gap-4 px-4 sm:px-6 lg:px-8 justify-end">
-      <%= if @current_scope do %>
-        <li>
-          {@current_scope.user.email}
-        </li>
-        <li>
-          <.link href={~p"/users/settings"}>Settings</.link>
-        </li>
-        <li>
-          <.link href={~p"/users/log-out"} method="delete">Log out</.link>
-        </li>
-      <% else %>
-        <li>
-          <.link href={~p"/users/register"}>Register</.link>
-        </li>
-        <li>
-          <.link href={~p"/users/log-in"}>Log in</.link>
-        </li>
-      <% end %>
-    </ul>
+  <body class="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
     {@inner_content}
   </body>
 </html>

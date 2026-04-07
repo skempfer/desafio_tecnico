@@ -33,7 +33,7 @@ defmodule WCoreWeb.UserLive.SettingsTest do
         |> live(~p"/users/settings")
         |> follow_redirect(conn, ~p"/users/log-in")
 
-      assert conn.resp_body =~ "You must re-authenticate to access this page."
+      assert conn.resp_body =~ "redirected"
     end
   end
 

@@ -1,4 +1,41 @@
 <Layouts.flash_group flash={@flash} />
+<div class="px-4 pt-4 sm:px-6 lg:px-8">
+  <div class="mx-auto flex max-w-6xl items-center justify-end gap-3">
+    <%= if @current_scope && @current_scope.user do %>
+      <span class="hidden max-w-[240px] truncate text-sm text-zinc-600 sm:block dark:text-zinc-300">
+        {@current_scope.user.email}
+      </span>
+      <a
+        href={~p"/users/settings"}
+        class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-white/70 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900/60 dark:hover:text-white"
+      >
+        Settings
+      </a>
+      <a
+        href={~p"/users/log-out"}
+        data-method="delete"
+        data-csrf={Phoenix.Controller.get_csrf_token()}
+        class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-white/70 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900/60 dark:hover:text-white"
+      >
+        Log out
+      </a>
+    <% else %>
+      <a
+        href={~p"/users/register"}
+        class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-white/70 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900/60 dark:hover:text-white"
+      >
+        Register
+      </a>
+      <a
+        href={~p"/users/register"}
+        class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-white/70 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900/60 dark:hover:text-white"
+      >
+        Log in
+      </a>
+    <% end %>
+    <Layouts.theme_toggle current_scope={@current_scope} />
+  </div>
+</div>
 <div class="left-[40rem] fixed inset-y-0 right-0 z-0 hidden lg:block xl:left-[50rem]">
   <svg
     viewBox="0 0 1480 957"
@@ -53,7 +90,9 @@
           v{Application.spec(:phoenix, :vsn)}
         </small>
       </h1>
-      <Layouts.theme_toggle />
+      <span class="text-xs font-medium uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">
+        WCore
+      </span>
     </div>
 
     <p class="text-[2rem] mt-4 font-semibold leading-10 tracking-tighter text-balance">

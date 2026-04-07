@@ -42,6 +42,7 @@ defmodule WCore.Telemetry.Ingester do
     case Telemetry.record_telemetry_event(node_id, status, payload, timestamp) do
       {:ok, _event} ->
         event_count = Cache.put(node_id, status, payload, timestamp)
+        Telemetry.broadcast_dashboard_node_changed(node_id, event_count, timestamp)
 
         Phoenix.PubSub.broadcast(
           WCore.PubSub,

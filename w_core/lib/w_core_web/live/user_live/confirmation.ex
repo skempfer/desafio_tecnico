@@ -1,16 +1,41 @@
 defmodule WCoreWeb.UserLive.Confirmation do
+  @moduledoc """
+  Magic-link confirmation screen.
+
+  This LiveView validates the incoming token, presents confirmation options,
+  and triggers the final login submission flow.
+  """
+
   use WCoreWeb, :live_view
 
   alias WCore.Accounts
 
+  @typedoc "Payload submitted by the confirmation form."
+  @type confirmation_params :: %{optional(String.t()) => String.t()}
+
   @impl true
+  @doc "Renders confirmation actions for first-time and returning users."
   @spec render(term()) :: term()
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-sm">
-        <div class="text-center">
-          <.header>Welcome {@user.email}</.header>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      page_title="Confirm access"
+      page_subtitle="Finalize your authentication to enter the dashboard"
+      content_max_width="max-w-xl"
+    >
+      <section class="rounded-2xl border border-zinc-300 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-7">
+        <div class="mb-6">
+          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+            WCore Control Room
+          </p>
+          <h2 class="mt-2 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+            Welcome {@user.email}
+          </h2>
+          <p class="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+            Choose how you want to continue this session.
+          </p>
         </div>
 
         <.form
@@ -21,17 +46,21 @@ defmodule WCoreWeb.UserLive.Confirmation do
           phx-submit="submit"
           action={~p"/users/log-in?_action=confirmed"}
           phx-trigger-action={@trigger_submit}
+          class="space-y-3"
         >
           <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
           <.button
             name={@form[:remember_me].name}
             value="true"
             phx-disable-with="Confirming..."
-            class="btn btn-primary w-full"
+            class="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/25 transition hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/30"
           >
             Confirm and stay logged in
           </.button>
-          <.button phx-disable-with="Confirming..." class="btn btn-primary btn-soft w-full mt-2">
+          <.button
+            phx-disable-with="Confirming..."
+            class="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
+          >
             Confirm and log in only this time
           </.button>
         </.form>
@@ -44,10 +73,14 @@ defmodule WCoreWeb.UserLive.Confirmation do
           phx-mounted={JS.focus_first()}
           action={~p"/users/log-in"}
           phx-trigger-action={@trigger_submit}
+          class="space-y-3"
         >
           <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
           <%= if @current_scope do %>
-            <.button phx-disable-with="Logging in..." class="btn btn-primary w-full">
+            <.button
+              phx-disable-with="Logging in..."
+              class="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/25 transition hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/30"
+            >
               Log in
             </.button>
           <% else %>
@@ -55,25 +88,29 @@ defmodule WCoreWeb.UserLive.Confirmation do
               name={@form[:remember_me].name}
               value="true"
               phx-disable-with="Logging in..."
-              class="btn btn-primary w-full"
+              class="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-900/25 transition hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/30"
             >
               Keep me logged in on this device
             </.button>
-            <.button phx-disable-with="Logging in..." class="btn btn-primary btn-soft w-full mt-2">
+            <.button
+              phx-disable-with="Logging in..."
+              class="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
+            >
               Log me in only this time
             </.button>
           <% end %>
         </.form>
 
-        <p :if={!@user.confirmed_at} class="alert alert-outline mt-8">
-          Tip: If you prefer passwords, you can enable them in the user settings.
+        <p :if={!@user.confirmed_at} class="mt-6 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">
+          Tip: If you prefer passwords, you can enable them in user settings later.
         </p>
-      </div>
+      </section>
     </Layouts.app>
     """
   end
 
   @impl true
+  @doc "Loads the user from the magic-link token or redirects if invalid."
   @spec mount(term(), term(), term()) :: term()
   def mount(%{"token" => token}, _session, socket) do
     if user = Accounts.get_user_by_magic_link_token(token) do
@@ -90,7 +127,9 @@ defmodule WCoreWeb.UserLive.Confirmation do
   end
 
   @impl true
-  @spec handle_event(term(), term(), term()) :: term()
+  @doc "Marks the form to trigger HTTP submission for the selected option."
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   def handle_event("submit", %{"user" => params}, socket) do
     {:noreply, assign(socket, form: to_form(params, as: "user"), trigger_submit: true)}
   end

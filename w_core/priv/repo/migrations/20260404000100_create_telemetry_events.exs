@@ -9,12 +9,16 @@ defmodule WCore.Repo.Migrations.CreateTelemetryEvents do
   processing.
   """
 
+  @typedoc "Supported indexed fields for telemetry event lookup and processing queries."
+  @type indexed_field :: :machine_identifier | :processed_at | :occurred_at
+
   @doc """
   Creates the `telemetry_events` table and supporting indexes.
 
   Indexes optimize common lookup and processing flows by machine identifier,
   event occurrence time, and processing state.
   """
+  @spec change() :: any()
   def change do
     create table(:telemetry_events) do
       add :machine_identifier, :string, null: false

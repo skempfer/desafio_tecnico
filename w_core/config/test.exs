@@ -30,4 +30,7 @@ config :phoenix,
 config :w_core, WCore.Repo,
   database: "w_core_test.sqlite3",
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: 10
+  pool_size: 10,
+  busy_timeout: 5_000
+
+config :w_core, :error_history_loading_delay_ms, 0

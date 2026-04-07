@@ -1,4 +1,12 @@
 defmodule WCoreWeb.Router do
+  @moduledoc """
+  Main HTTP router for web and LiveView endpoints.
+
+  Defines browser and API pipelines, authentication-aware live sessions, and
+  route groups for public pages, user account flows, and telemetry dashboard
+  access.
+  """
+
   use WCoreWeb, :router
 
   import WCoreWeb.UserAuth
@@ -28,18 +36,7 @@ defmodule WCoreWeb.Router do
     get "/", PageController, :home
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", WCoreWeb do
-  #   pipe_through :api
-  # end
-
-  # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:w_core, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do
@@ -59,6 +56,7 @@ defmodule WCoreWeb.Router do
       on_mount: [{WCoreWeb.UserAuth, :require_authenticated}] do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
+      live "/control-room", TelemetryLive.Dashboard, :index
     end
 
     post "/users/update-password", UserSessionController, :update_password

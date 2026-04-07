@@ -78,6 +78,17 @@ defmodule WCoreWeb.Telemetry do
           "The time the connection spent waiting before being checked out for the query"
       ),
 
+      # Dashboard Metrics
+      summary("w_core.dashboard.load_page.duration",
+        tags: [:source],
+        unit: {:native, :millisecond}
+      ),
+      summary("w_core.dashboard.refresh_pending_nodes.duration",
+        unit: {:native, :millisecond}
+      ),
+      sum("w_core.dashboard.auto_refresh.count"),
+      sum("w_core.dashboard.params_canonicalized.count"),
+
       # VM Metrics
       summary("vm.memory.total", unit: {:byte, :kilobyte}),
       summary("vm.total_run_queue_lengths.total"),

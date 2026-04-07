@@ -31,40 +31,47 @@ defmodule WCoreWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
+  attr :page_title, :string, default: nil, doc: "optional page title shown in the app header"
+  attr :page_subtitle, :string, default: nil, doc: "optional subtitle shown below the page title"
+  attr :content_max_width, :string,
+    default: "max-w-2xl",
+    doc: "tailwind max-width class for the page content container"
+
   slot :inner_block, required: true
 
   @spec app(term()) :: term()
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://hexdocs.pm/phoenix/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
+    <header class="border-b border-zinc-300/80 bg-white px-4 backdrop-blur-sm sm:px-6 lg:px-8 dark:border-zinc-800 dark:bg-transparent">
+      <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 py-3">
+        <div>
+          <h1 :if={@page_title} class="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+            {@page_title}
+          </h1>
+          <p :if={@page_subtitle} class="text-sm text-zinc-500 dark:text-zinc-400">
+            {@page_subtitle}
+          </p>
+        </div>
+        <div class="flex items-center gap-2 sm:gap-3">
+          <%= if @current_scope && @current_scope.user do %>
+            <span class="hidden truncate text-sm text-zinc-500 dark:text-zinc-400 sm:block max-w-[200px]">
+              {@current_scope.user.email}
+            </span>
+            <.link
+              href={~p"/users/log-out"}
+              method="delete"
+              class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
+            >
+              Log out
+            </.link>
+          <% end %>
+          <.theme_toggle current_scope={@current_scope} />
+        </div>
       </div>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+    <main class="px-4 pb-12 pt-6 sm:px-6 sm:pb-14 sm:pt-10 lg:px-8">
+      <div class={["mx-auto space-y-4", @content_max_width]}>
         {render_slot(@inner_block)}
       </div>
     </main>
@@ -118,38 +125,65 @@ defmodule WCoreWeb.Layouts do
   end
 
   @doc """
-  Provides dark vs light theme toggle based on themes defined in app.css.
-
-  See <head> in root.html.heex which applies the theme before page load.
+  Provides a theme toggle with sun/moon/system icons and active state highlight.
+  Optionally renders a settings gear icon when current_scope has a user.
   """
+  attr :current_scope, :map, default: nil
+
   @spec theme_toggle(term()) :: term()
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
+    <div
+      id="theme-toggle"
+      phx-hook="ThemeToggle"
+      class="flex items-center gap-0.5 rounded-full border border-zinc-300 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-800"
+    >
+      <.link
+        :if={@current_scope && @current_scope.user}
+        href={~p"/users/settings"}
+        title="Settings"
+        aria-label="Settings"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-white"
+      >
+        <.icon name="hero-cog-6-tooth" class="size-4" />
+      </.link>
+
+      <span :if={@current_scope && @current_scope.user} class="w-px self-stretch bg-zinc-300 dark:bg-zinc-600 mx-0.5"></span>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        data-theme-btn="system"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="system"
+        title="System"
+        type="button"
+        aria-label="System theme"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-white"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-computer-desktop" class="size-4" />
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        data-theme-btn="light"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="light"
+        title="Light"
+        type="button"
+        aria-label="Light theme"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-white"
       >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-sun" class="size-4" />
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        data-theme-btn="dark"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="dark"
+        title="Dark"
+        type="button"
+        aria-label="Dark theme"
+        class="rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-white"
       >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-moon" class="size-4" />
       </button>
     </div>
     """

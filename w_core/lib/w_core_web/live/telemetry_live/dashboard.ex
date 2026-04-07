@@ -1,0 +1,1270 @@
+defmodule WCoreWeb.TelemetryLive.Dashboard do
+  @moduledoc """
+  Live dashboard that renders the Control Room telemetry overview.
+
+  On mount, it loads known nodes for the current authenticated scope and builds
+  an initial cold-state row model for presentation.
+  """
+
+  use WCoreWeb, :live_view
+
+  alias MapSet
+  alias WCore.Telemetry
+
+  @refresh_delay_ms 50
+  @nodes_per_page 20
+  @machine_errors_per_page 10
+  @default_auto_refresh_seconds 10
+  @min_auto_refresh_seconds 1
+  @max_auto_refresh_seconds 60
+  @countdown_tick_ms 1_000
+  @countdown_circumference 100.53
+  @query_param_keys ~w(page q status sort_by sort_dir)
+
+  @impl true
+  @doc """
+  Initializes dashboard assigns for the current user scope.
+
+  Loads nodes visible to the authenticated user with their current hot
+  telemetry state. When the LiveView is connected, it also subscribes to
+  lightweight dashboard invalidation events and initializes coalescing state
+  used to batch row refreshes.
+  """
+
+  def mount(params, _session, socket) do
+    auto_refresh_seconds = auto_refresh_seconds()
+
+    if connected?(socket) do
+      Telemetry.subscribe_dashboard_updates()
+      schedule_auto_refresh(auto_refresh_seconds)
+      schedule_countdown_tick()
+    end
+
+    page = parse_page(Map.get(params, "page"))
+    search_query = parse_search_query(Map.get(params, "q"))
+
+    socket =
+      socket
+      |> assign(:page_title, "Control Room")
+      |> assign(:rows, [])
+      |> assign(:pending_node_ids, MapSet.new())
+      |> assign(:refresh_timer_ref, nil)
+      |> assign(:page, 1)
+      |> assign(:per_page, @nodes_per_page)
+      |> assign(:total_entries, 0)
+      |> assign(:total_pages, 1)
+      |> assign(:has_prev, false)
+      |> assign(:has_next, false)
+      |> assign(:visible_node_ids, MapSet.new())
+      |> assign(:search_query, search_query)
+      |> assign(:status_filter, "all")
+      |> assign(:status_counts, %{all: 0, online: 0, degraded: 0, offline: 0, unknown: 0})
+      |> assign(:sort_by, "status")
+      |> assign(:sort_dir, "asc")
+      |> assign(:auto_refresh_seconds, auto_refresh_seconds)
+      |> assign(:countdown_circumference, @countdown_circumference)
+      |> assign(:seconds_until_refresh, auto_refresh_seconds)
+      |> assign(:selected_ids, MapSet.new())
+      |> assign(:select_all_pages, false)
+      |> assign(:expanded_machine_id, nil)
+      |> assign(:loading_machine_id, nil)
+      |> assign(:error_rows, [])
+      |> assign(:error_page, 1)
+      |> assign(:error_total_entries, 0)
+      |> assign(:error_total_pages, 1)
+      |> assign(:error_has_prev, false)
+      |> assign(:error_has_next, false)
+      |> assign(:selected_error_ids, MapSet.new())
+      |> load_page(page, :mount)
+
+    {:ok, socket}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    page = parse_page(Map.get(params, "page"))
+    search_query = parse_search_query(Map.get(params, "q"))
+    status_filter = normalize_status_filter(Map.get(params, "status"))
+    sort_by = normalize_sort_by(Map.get(params, "sort_by"))
+    sort_dir = normalize_sort_dir(Map.get(params, "sort_dir"))
+
+    socket =
+      if page == socket.assigns.page and
+           search_query == socket.assigns.search_query and
+           status_filter == socket.assigns.status_filter and
+           sort_by == socket.assigns.sort_by and
+           sort_dir == socket.assigns.sort_dir do
+        socket
+      else
+        socket
+        |> assign(:search_query, search_query)
+        |> assign(:status_filter, status_filter)
+        |> assign(:sort_by, sort_by)
+        |> assign(:sort_dir, sort_dir)
+        |> load_page(page, :params)
+      end
+
+    incoming_query_params =
+      params
+      |> Map.take(@query_param_keys)
+      |> normalize_query_params()
+
+    canonical_query_params =
+      socket
+      |> current_query_params()
+      |> normalize_query_params()
+
+    if incoming_query_params == canonical_query_params do
+      {:noreply, socket}
+    else
+      emit_telemetry(
+        [:w_core, :dashboard, :params_canonicalized],
+        %{count: 1},
+        %{route: "/control-room"}
+      )
+
+      {:noreply, push_patch(socket, to: ~p"/control-room?#{canonical_query_params}", replace: true)}
+    end
+  end
+
+  @impl true
+  @doc """
+  Renders the Control Room table with machine status information.
+  """
+  def render(assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      page_title="Control Room"
+      page_subtitle="Real-time machine heartbeat overview"
+      content_max_width="max-w-6xl"
+    >
+      <div id="csv-download-hook" phx-hook="CsvDownload" class="hidden" />
+      <div class="mb-4 flex flex-col gap-3 sm:flex-row">
+        <div
+          id="dashboard-connection-status"
+          phx-hook="ConnectionStatus"
+          data-state="connected"
+          class="group flex flex-1 items-center justify-between rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <p class="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Connection</p>
+          <p data-role="connection-label" role="status" aria-live="polite" class="inline-flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
+            <span
+              class="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)] transition-colors duration-300 group-data-[state=disconnected]:bg-amber-500 group-data-[state=disconnected]:shadow-[0_0_0_4px_rgba(245,158,11,0.18)]"
+            />
+            Live
+          </p>
+        </div>
+
+        <div class="flex flex-1 items-center justify-between gap-3 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <p class="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">Next update in</p>
+
+          <div class="relative size-10 shrink-0">
+            <svg viewBox="0 0 40 40" class="size-10 -rotate-90" role="img" aria-label="Auto refresh countdown">
+              <circle cx="20" cy="20" r="16" class="fill-none stroke-zinc-200 dark:stroke-zinc-700" stroke-width="4" />
+              <circle
+                cx="20"
+                cy="20"
+                r="16"
+                class="fill-none stroke-indigo-500 transition-all duration-700 ease-linear"
+                stroke-width="4"
+                stroke-linecap="round"
+                stroke-dasharray={@countdown_circumference}
+                stroke-dashoffset={countdown_offset(@seconds_until_refresh, @auto_refresh_seconds)}
+              />
+            </svg>
+            <div id="dashboard-refresh-seconds" class="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">
+              {@seconds_until_refresh}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section class="mb-5">
+        <form id="dashboard-search" phx-change="search" phx-submit="search" class="flex items-center gap-2">
+          <label for="dashboard-search-query" class="sr-only">Search machines</label>
+          <div class="relative w-full">
+            <.icon
+              name="hero-magnifying-glass"
+              class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
+            />
+            <input
+              id="dashboard-search-query"
+              type="text"
+              name="search[query]"
+              value={@search_query}
+              phx-debounce="300"
+              placeholder="Search by machine or location"
+              autocomplete="off"
+              class="w-full rounded-lg border border-zinc-300 bg-zinc-50 py-2 pl-10 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+            />
+          </div>
+          <button
+            :if={@search_query != ""}
+            type="button"
+            phx-click="clear_search"
+            class="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800/70 dark:bg-rose-900/30 dark:text-rose-300 dark:hover:bg-rose-900/40"
+          >
+            Clear
+          </button>
+        </form>
+      </section>
+
+      <section class="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="all"
+          aria-pressed={aria_pressed(@status_filter == "all")}
+          class={summary_card_class(@status_filter == "all", "zinc")}
+        >
+          <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Nodes</p>
+          <p class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">{@status_counts.all}</p>
+        </button>
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="online"
+          aria-pressed={aria_pressed(@status_filter == "online")}
+          class={summary_card_class(@status_filter == "online", "emerald")}
+        >
+          <p class="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Online</p>
+          <p class="text-2xl font-semibold text-emerald-900 dark:text-emerald-200">{@status_counts.online}</p>
+        </button>
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="degraded"
+          aria-pressed={aria_pressed(@status_filter == "degraded")}
+          class={summary_card_class(@status_filter == "degraded", "amber")}
+        >
+          <p class="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Degraded</p>
+          <p class="text-2xl font-semibold text-amber-900 dark:text-amber-200">{@status_counts.degraded}</p>
+        </button>
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="offline"
+          aria-pressed={aria_pressed(@status_filter == "offline")}
+          class={summary_card_class(@status_filter == "offline", "rose")}
+        >
+          <p class="text-xs font-medium uppercase tracking-wide text-rose-700 dark:text-rose-300">Offline</p>
+          <p class="text-2xl font-semibold text-rose-900 dark:text-rose-200">{@status_counts.offline}</p>
+        </button>
+        <button
+          type="button"
+          phx-click="set_status_filter"
+          phx-value-status="unknown"
+          aria-pressed={aria_pressed(@status_filter == "unknown")}
+          class={summary_card_class(@status_filter == "unknown", "indigo")}
+        >
+          <p class="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Others</p>
+          <p class="text-2xl font-semibold text-indigo-900 dark:text-indigo-200">{@status_counts.unknown}</p>
+        </button>
+      </section>
+
+      <div
+        id="bulk-actions-bar"
+        data-visible={to_string(has_selection?(@selected_ids, @select_all_pages))}
+        class={[
+          "overflow-hidden transition-all duration-200 ease-in-out",
+          if(has_selection?(@selected_ids, @select_all_pages),
+            do: "max-h-20 mb-3 opacity-100",
+            else: "max-h-0 opacity-0 pointer-events-none"
+          )
+        ]}
+        aria-hidden={to_string(!has_selection?(@selected_ids, @select_all_pages))}
+      >
+        <div class="flex items-center justify-between rounded-xl border border-indigo-200 bg-white px-4 py-2.5 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-900/20">
+          <span class="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+            Selected: {selection_count(@selected_ids, @select_all_pages, @total_entries)}
+          </span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              phx-click="export_csv"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-transparent dark:text-indigo-300 dark:hover:bg-indigo-600/30"
+            >
+              <.icon name="hero-arrow-down-tray" class="size-3.5" />
+              Export CSV
+            </button>
+            <button
+              type="button"
+              phx-click="clear_selection"
+              class="inline-flex items-center rounded-lg border border-zinc-300 bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-200 dark:border-zinc-600/30 dark:bg-zinc-800/40 dark:text-zinc-400 dark:hover:bg-zinc-700/40"
+            >
+              Clear selection
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        id="dashboard-results"
+        phx-hook="DashboardLoading"
+        data-loading="false"
+        class="group relative overflow-x-auto rounded-xl border border-zinc-300 bg-zinc-50 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      >
+        <table class="w-full border-collapse text-left text-sm transition-opacity duration-150 group-data-[loading=true]:opacity-55">
+          <thead class="border-b border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+            <tr>
+              <th aria-sort={aria_sort("machine", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="machine" current_by={@sort_by} current_dir={@sort_dir}>Machine</.sort_button></th>
+              <th aria-sort={aria_sort("location", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="location" current_by={@sort_by} current_dir={@sort_dir}>Location</.sort_button></th>
+              <th aria-sort={aria_sort("status", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="status" current_by={@sort_by} current_dir={@sort_dir}>Status</.sort_button></th>
+              <th aria-sort={aria_sort("events", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="events" current_by={@sort_by} current_dir={@sort_dir}>Events</.sort_button></th>
+              <th aria-sort={aria_sort("last_seen", @sort_by, @sort_dir)} class="px-5 py-3.5 font-semibold"><.sort_button by="last_seen" current_by={@sort_by} current_dir={@sort_dir}>Last Seen</.sort_button></th>
+              <th class="w-10 px-3 py-3.5 text-center">
+                <form id="select-all-form" phx-change="toggle_select_all" class="inline-flex">
+                  <input type="hidden" name="select_all" value="false" />
+                  <input
+                    type="checkbox"
+                    id="select-all-checkbox"
+                    name="select_all"
+                    value="true"
+                    checked={@select_all_pages}
+                    aria-label="Select all machines"
+                    class="size-4 cursor-pointer rounded border-zinc-300 text-indigo-600 accent-indigo-600 focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
+                  />
+                </form>
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-200 text-zinc-800 dark:divide-zinc-800 dark:text-zinc-200">
+            <tr :if={Enum.empty?(@rows)}>
+              <td colspan="6" class="px-5 py-10 text-center text-zinc-500 dark:text-zinc-400">
+                <p>{empty_state_text(@search_query, @status_filter)}</p>
+                <button
+                  :if={has_active_filters?(@search_query, @status_filter)}
+                  type="button"
+                  phx-click="reset_filters"
+                  class="mt-3 inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-700/60 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
+                >
+                  Reset filters
+                </button>
+              </td>
+            </tr>
+            <%= for row <- @rows do %>
+              <tr
+                id={"node-#{row.machine_identifier}"}
+                phx-click="toggle_machine_errors"
+                phx-value-machine={row.machine_identifier}
+                class="cursor-pointer transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+              >
+                <td class="px-5 py-3.5 font-medium">
+                  <span class="inline-flex items-center gap-2">
+                    {row.machine_identifier}
+                    <svg
+                      :if={@loading_machine_id == row.machine_identifier}
+                      class="size-3.5 animate-spin text-indigo-500 dark:text-indigo-400" style="animation-duration: 0.9s"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  </span>
+                </td>
+                <td class="px-5 py-3.5 text-zinc-600 dark:text-zinc-300">
+                  {row.location}
+                </td>
+                <td class="px-5 py-3.5">
+                  <.status_badge status={row.status} />
+                </td>
+                <td class="px-5 py-3.5 tabular-nums">
+                  {row.total_events_processed}
+                </td>
+                <td class="px-5 py-3.5 tabular-nums text-zinc-600 dark:text-zinc-300">
+                  {format_ts(row.last_seen_at)}
+                </td>
+                <td class="w-10 px-3 py-3.5 text-center" phx-click.stop="">
+                  <form id={"row-select-#{row.machine_identifier}"} phx-change="toggle_row_select" class="inline-flex">
+                    <input type="hidden" name="row_id" value={row.machine_identifier} />
+                    <input type="hidden" name="selected" value="false" />
+                    <input
+                      type="checkbox"
+                      name="selected"
+                      value="true"
+                      checked={@select_all_pages or MapSet.member?(@selected_ids, row.machine_identifier)}
+                      aria-label={"Select #{row.machine_identifier}"}
+                      class="size-4 cursor-pointer rounded border-zinc-300 text-indigo-600 accent-indigo-600 focus:ring-2 focus:ring-indigo-500 dark:border-zinc-600 dark:bg-zinc-800"
+                    />
+                  </form>
+                </td>
+              </tr>
+              <tr :if={@expanded_machine_id == row.machine_identifier} id={"node-errors-#{row.machine_identifier}"}>
+                <td colspan="6" class="bg-zinc-100/70 px-5 py-4 dark:bg-zinc-950/30">
+                  <div id="machine-error-history-panel" class="rounded-xl border border-zinc-300 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Error history</p>
+                      <p class="text-xs text-zinc-500 dark:text-zinc-400">
+                        {row.machine_identifier} · {@error_total_entries} unresolved errors
+                      </p>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        phx-click="resolve_selected_errors"
+                        disabled={MapSet.size(@selected_error_ids) == 0}
+                        class="inline-flex items-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition enabled:hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400 dark:border-emerald-700/50 dark:bg-emerald-900/20 dark:text-emerald-300 dark:enabled:hover:bg-emerald-900/30 dark:disabled:border-zinc-700 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500"
+                      >
+                        Resolve selected
+                      </button>
+                      <button
+                        type="button"
+                        phx-click="collapse_machine_errors"
+                        class="inline-flex items-center rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+
+                  <div :if={Enum.empty?(@error_rows)} class="mt-4 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-5 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400">
+                    No unresolved errors recorded for this machine.
+                  </div>
+
+                  <div :if={not Enum.empty?(@error_rows)} class="mt-4 overflow-hidden rounded-lg border border-zinc-300 dark:border-zinc-800">
+                    <table class="w-full border-collapse text-left text-sm">
+                      <thead class="border-b border-zinc-300 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-zinc-300">
+                        <tr>
+                          <th class="px-4 py-3 font-semibold">Error</th>
+                          <th class="px-4 py-3 font-semibold">Occurred at</th>
+                          <th class="w-10 px-3 py-3 text-center">
+                            <form id="select-all-errors-form" phx-change="toggle_select_all_errors" class="inline-flex">
+                              <input type="hidden" name="select_all_errors" value="false" />
+                              <input
+                                type="checkbox"
+                                name="select_all_errors"
+                                value="true"
+                                checked={error_select_all_checked?(@error_rows, @selected_error_ids)}
+                                aria-label="Select all visible errors"
+                                class="size-4 cursor-pointer rounded border-zinc-300 text-emerald-600 accent-emerald-600 focus:ring-2 focus:ring-emerald-500 dark:border-zinc-600 dark:bg-zinc-800"
+                              />
+                            </form>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-zinc-200 bg-white dark:divide-zinc-800 dark:bg-zinc-900">
+                        <tr :for={event <- @error_rows} id={"machine-error-#{event.id}"}>
+                          <td class="px-4 py-3.5 text-zinc-800 dark:text-zinc-200">{event.error_message}</td>
+                          <td class="px-4 py-3.5 tabular-nums text-zinc-500 dark:text-zinc-400">{format_ts(event.occurred_at)}</td>
+                          <td class="w-10 px-3 py-3.5 text-center">
+                            <form id={"error-select-#{event.id}"} phx-change="toggle_error_select" class="inline-flex">
+                              <input type="hidden" name="error_id" value={event.id} />
+                              <input type="hidden" name="selected" value="false" />
+                              <input
+                                type="checkbox"
+                                name="selected"
+                                value="true"
+                                checked={MapSet.member?(@selected_error_ids, event.id)}
+                                aria-label={"Select error #{event.id}"}
+                                class="size-4 cursor-pointer rounded border-zinc-300 text-emerald-600 accent-emerald-600 focus:ring-2 focus:ring-emerald-500 dark:border-zinc-600 dark:bg-zinc-800"
+                              />
+                            </form>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div :if={not Enum.empty?(@error_rows)} class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p class="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                      Showing {length(@error_rows)} of {@error_total_entries} errors
+                    </p>
+
+                    <div class="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-zinc-50 px-2 py-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+                      <button
+                        type="button"
+                        phx-click="set_error_page"
+                        phx-value-page={max(@error_page - 1, 1)}
+                        disabled={!@error_has_prev}
+                        aria-label="Go to previous error page"
+                        class="inline-flex size-8 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-700 dark:disabled:text-zinc-600"
+                      >
+                        <.icon name="hero-chevron-left" class="size-4" />
+                      </button>
+
+                      <span class="min-w-16 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                        {@error_page} / {@error_total_pages}
+                      </span>
+
+                      <button
+                        type="button"
+                        phx-click="set_error_page"
+                        phx-value-page={@error_page + 1}
+                        disabled={!@error_has_next}
+                        aria-label="Go to next error page"
+                        class="inline-flex size-8 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-700 dark:disabled:text-zinc-600"
+                      >
+                        <.icon name="hero-chevron-right" class="size-4" />
+                      </button>
+                    </div>
+                  </div>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+
+        <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-zinc-50/75 opacity-0 transition-opacity duration-150 group-data-[loading=true]:opacity-100 dark:bg-zinc-900/60">
+          <div class="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-zinc-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+            <span class="size-2 rounded-full bg-indigo-500 animate-pulse" />
+            Updating
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-5 grid items-center gap-3 sm:grid-cols-3">
+        <div class="hidden sm:block" />
+
+        <div class="flex justify-center">
+          <div class="inline-flex items-center rounded-full border border-zinc-300 bg-white p-1 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+            <button
+              type="button"
+              phx-click="prev_page"
+              disabled={!@has_prev}
+              aria-label="Go to previous page"
+              class="inline-flex size-9 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 enabled:hover:text-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-800 dark:enabled:hover:text-white dark:disabled:text-zinc-600"
+            >
+              <.icon name="hero-chevron-left" class="size-4" />
+            </button>
+
+            <div class="min-w-20 px-2 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              {@page} / {@total_pages}
+            </div>
+
+            <button
+              type="button"
+              phx-click="next_page"
+              disabled={!@has_next}
+              aria-label="Go to next page"
+              class="inline-flex size-9 items-center justify-center rounded-full text-zinc-700 transition enabled:hover:bg-zinc-100 enabled:hover:text-zinc-900 disabled:cursor-not-allowed disabled:text-zinc-400 dark:text-zinc-300 dark:enabled:hover:bg-zinc-800 dark:enabled:hover:text-white dark:disabled:text-zinc-600"
+            >
+              <.icon name="hero-chevron-right" class="size-4" />
+            </button>
+          </div>
+        </div>
+
+        <p class="text-center text-sm font-medium text-zinc-500 sm:text-right dark:text-zinc-400">
+          Showing {length(@rows)} of {@total_entries} machines
+        </p>
+      </div>
+    </Layouts.app>
+    """
+  end
+
+  @doc """
+  Handles dashboard UI events including pagination, filters, sorting, row
+  selection, select-all export mode, clearing selection, and CSV export.
+  """
+  @impl true
+  def handle_event("prev_page", _params, socket) do
+    target_page = max(1, socket.assigns.page - 1)
+
+    {:noreply, patch_to(socket, %{"page" => Integer.to_string(target_page)})}
+  end
+
+  @impl true
+  def handle_event("next_page", _params, socket) do
+    target_page = socket.assigns.page + 1
+
+    {:noreply, patch_to(socket, %{"page" => Integer.to_string(target_page)})}
+  end
+
+  @impl true
+  def handle_event("set_status_filter", %{"status" => status}, socket) do
+    normalized_status = normalize_status_filter(status)
+
+    {:noreply,
+     patch_to(socket, %{
+       "status" => normalized_status,
+       "page" => "1"
+     })}
+  end
+
+  @impl true
+  def handle_event("sort", %{"by" => by}, socket) do
+    by = normalize_sort_by(by)
+
+    {sort_by, sort_dir} =
+      if socket.assigns.sort_by == by do
+        {by, toggle_sort_dir(socket.assigns.sort_dir)}
+      else
+        {by, "asc"}
+      end
+
+    {:noreply,
+     patch_to(socket, %{
+       "sort_by" => sort_by,
+       "sort_dir" => sort_dir,
+       "page" => "1"
+     })}
+  end
+
+  @impl true
+  def handle_event("search", %{"search" => %{"query" => query}}, socket) do
+    query = parse_search_query(query)
+
+    if query == socket.assigns.search_query do
+      {:noreply, socket}
+    else
+      {:noreply, patch_to(socket, %{"q" => query, "page" => "1"})}
+    end
+  end
+
+  @impl true
+  def handle_event("clear_search", _params, socket) do
+    {:noreply, patch_to(socket, %{"q" => "", "page" => "1"})}
+  end
+
+  @impl true
+  def handle_event("reset_filters", _params, socket) do
+    {:noreply,
+     patch_to(socket, %{
+       "q" => "",
+       "status" => "all",
+       "page" => "1"
+     })}
+  end
+
+  @impl true
+  def handle_event("toggle_select_all", params, socket) do
+    select_all_pages = param_truthy?(params, "select_all")
+
+    {:noreply,
+     socket
+     |> assign(:select_all_pages, select_all_pages)
+     |> assign(:selected_ids, MapSet.new())}
+  end
+
+  @impl true
+  def handle_event("toggle_row_select", %{"row_id" => machine_id} = params, socket) do
+    selected = param_truthy?(params, "selected")
+
+    selected_ids =
+      if selected do
+        MapSet.put(socket.assigns.selected_ids, machine_id)
+      else
+        MapSet.delete(socket.assigns.selected_ids, machine_id)
+      end
+
+    {:noreply,
+     socket
+     |> assign(:selected_ids, selected_ids)
+     |> assign(:select_all_pages, false)}
+  end
+
+  @impl true
+  def handle_event("clear_selection", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:selected_ids, MapSet.new())
+     |> assign(:select_all_pages, false)}
+  end
+
+  @impl true
+  def handle_event("toggle_machine_errors", %{"machine" => machine_identifier}, socket) do
+    if socket.assigns.expanded_machine_id == machine_identifier do
+      {:noreply, clear_machine_errors(socket)}
+    else
+      delay = Application.get_env(:w_core, :error_history_loading_delay_ms, 900)
+      Process.send_after(self(), {:load_machine_errors, machine_identifier, 1}, delay)
+
+      {:noreply,
+       socket
+       |> clear_machine_errors()
+       |> assign(:loading_machine_id, machine_identifier)}
+    end
+  end
+
+  @impl true
+  def handle_info({:load_machine_errors, machine_identifier, page}, socket) do
+    socket =
+      socket
+      |> assign(:loading_machine_id, nil)
+      |> load_machine_errors(machine_identifier, page)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("collapse_machine_errors", _params, socket) do
+    {:noreply, clear_machine_errors(socket)}
+  end
+
+  @impl true
+  def handle_event("set_error_page", %{"page" => page}, socket) do
+    requested_page = parse_page(page)
+
+    {:noreply, load_machine_errors(socket, socket.assigns.expanded_machine_id, requested_page)}
+  end
+
+  @impl true
+  def handle_event("toggle_select_all_errors", params, socket) do
+    selected_error_ids =
+      if param_truthy?(params, "select_all_errors") do
+        socket.assigns.error_rows
+        |> Enum.map(& &1.id)
+        |> MapSet.new()
+      else
+        MapSet.new()
+      end
+
+    {:noreply, assign(socket, :selected_error_ids, selected_error_ids)}
+  end
+
+  @impl true
+  def handle_event("toggle_error_select", %{"error_id" => error_id} = params, socket) do
+    selected = param_truthy?(params, "selected")
+    error_id = parse_int(error_id)
+
+    selected_error_ids =
+      if selected do
+        MapSet.put(socket.assigns.selected_error_ids, error_id)
+      else
+        MapSet.delete(socket.assigns.selected_error_ids, error_id)
+      end
+
+    {:noreply, assign(socket, :selected_error_ids, selected_error_ids)}
+  end
+
+  @impl true
+  def handle_event("resolve_selected_errors", _params, socket) do
+    if MapSet.size(socket.assigns.selected_error_ids) == 0 or
+         is_nil(socket.assigns.expanded_machine_id) do
+      {:noreply, socket}
+    else
+      Telemetry.resolve_machine_error_events(
+        socket.assigns.current_scope,
+        socket.assigns.expanded_machine_id,
+        MapSet.to_list(socket.assigns.selected_error_ids)
+      )
+
+      {:noreply, load_page(socket, socket.assigns.page, :error_resolution)}
+    end
+  end
+
+  @impl true
+  def handle_event("export_csv", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    rows_to_export =
+      if socket.assigns.select_all_pages do
+        Telemetry.list_all_nodes_for_export(scope,
+          search: socket.assigns.search_query,
+          status: socket.assigns.status_filter,
+          sort_by: socket.assigns.sort_by,
+          sort_dir: socket.assigns.sort_dir
+        )
+      else
+        Enum.filter(socket.assigns.rows, fn row ->
+          MapSet.member?(socket.assigns.selected_ids, row.machine_identifier)
+        end)
+      end
+
+    csv = build_csv(rows_to_export)
+    filename = "control_room_#{Date.utc_today()}.csv"
+
+    {:noreply, push_event(socket, "download_csv", %{csv: csv, filename: filename})}
+  end
+
+  @impl true
+  def handle_info({:node_changed, machine_identifier, _event_count, _timestamp}, socket) do
+    if MapSet.member?(socket.assigns.visible_node_ids, machine_identifier) do
+      pending_node_ids = MapSet.put(socket.assigns.pending_node_ids, machine_identifier)
+
+      socket =
+        if socket.assigns.refresh_timer_ref do
+          assign(socket, :pending_node_ids, pending_node_ids)
+        else
+          timer_ref = Process.send_after(self(), :refresh_pending_nodes, @refresh_delay_ms)
+
+          socket
+          |> assign(:pending_node_ids, pending_node_ids)
+          |> assign(:refresh_timer_ref, timer_ref)
+        end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(:refresh_pending_nodes, socket) do
+    started_at = System.monotonic_time()
+    pending_count = MapSet.size(socket.assigns.pending_node_ids)
+    scope = socket.assigns.current_scope
+
+    refreshed_rows_by_machine_id =
+      socket.assigns.pending_node_ids
+      |> Enum.reduce(%{}, fn machine_identifier, acc ->
+        case Telemetry.get_node_with_hot_state(scope, machine_identifier) do
+          nil -> acc
+          row -> Map.put(acc, machine_identifier, row)
+        end
+      end)
+
+    rows =
+      Enum.map(socket.assigns.rows, fn row ->
+        Map.get(refreshed_rows_by_machine_id, row.machine_identifier, row)
+      end)
+
+    emit_telemetry(
+      [:w_core, :dashboard, :refresh_pending_nodes],
+      %{
+        duration: System.monotonic_time() - started_at
+      },
+      %{
+        pending_count: pending_count,
+        refreshed_count: map_size(refreshed_rows_by_machine_id)
+      }
+    )
+
+    {:noreply,
+     socket
+     |> assign(:rows, rows)
+     |> assign(:pending_node_ids, MapSet.new())
+     |> assign(:refresh_timer_ref, nil)
+     |> mark_refreshed()}
+  end
+
+  @impl true
+  def handle_info(:auto_refresh_page, socket) do
+    emit_telemetry(
+      [:w_core, :dashboard, :auto_refresh],
+      %{count: 1},
+      %{page: socket.assigns.page}
+    )
+
+    schedule_auto_refresh(socket.assigns.auto_refresh_seconds)
+    {:noreply, load_page(socket, socket.assigns.page, :auto_refresh)}
+  end
+
+  @impl true
+  def handle_info(:countdown_tick, socket) do
+    schedule_countdown_tick()
+
+    seconds_until_refresh =
+      socket.assigns.seconds_until_refresh
+      |> Kernel.-(1)
+      |> max(0)
+
+    {:noreply,
+     socket
+     |> assign(:seconds_until_refresh, seconds_until_refresh)}
+  end
+
+  defp format_ts(nil), do: "-"
+  defp format_ts(ts), do: Calendar.strftime(ts, "%Y-%m-%d %H:%M:%S")
+
+  defp has_selection?(selected_ids, select_all_pages) do
+    select_all_pages or MapSet.size(selected_ids) > 0
+  end
+
+  defp selection_count(_selected_ids, true, total_entries), do: total_entries
+  defp selection_count(selected_ids, false, _total_entries), do: MapSet.size(selected_ids)
+
+  defp error_select_all_checked?([], _selected_error_ids), do: false
+
+  defp error_select_all_checked?(error_rows, selected_error_ids) do
+    Enum.all?(error_rows, &MapSet.member?(selected_error_ids, &1.id))
+  end
+
+  defp build_csv(rows) do
+    header = "Machine,Location,Status,Events,Last Seen\r\n"
+
+    data =
+      Enum.map_join(rows, fn row ->
+        [
+          csv_escape(row.machine_identifier),
+          csv_escape(row.location || ""),
+          csv_escape(row.status),
+          Integer.to_string(row.total_events_processed || 0),
+          csv_escape(format_ts(row.last_seen_at))
+        ]
+        |> Enum.join(",")
+        |> Kernel.<>("\r\n")
+      end)
+
+    header <> data
+  end
+
+  defp csv_escape(value) when is_binary(value) do
+    if String.contains?(value, [",", "\"", "\n", "\r"]) do
+      "\"#{String.replace(value, "\"", "\"\"")}\""
+    else
+      value
+    end
+  end
+
+  defp csv_escape(value), do: csv_escape(to_string(value))
+
+  defp param_truthy?(params, key) do
+    case Map.get(params, key) do
+      values when is_list(values) -> Enum.any?(values, &truthy_value?/1)
+      value -> truthy_value?(value)
+    end
+  end
+
+  defp truthy_value?(value) when value in [true, "true", "on", "1"], do: true
+  defp truthy_value?(_value), do: false
+
+  defp parse_int(value) when is_integer(value), do: value
+
+  defp parse_int(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, ""} -> parsed
+      _ -> 0
+    end
+  end
+
+  defp parse_int(_value), do: 0
+
+  defp parse_page(nil), do: 1
+
+  defp parse_page(page_param) when is_binary(page_param) do
+    case Integer.parse(page_param) do
+      {value, ""} when value > 0 -> value
+      _ -> 1
+    end
+  end
+
+  defp parse_page(_), do: 1
+
+  defp parse_search_query(nil), do: ""
+
+  defp parse_search_query(query) when is_binary(query) do
+    query
+    |> String.trim()
+  end
+
+  defp parse_search_query(_), do: ""
+
+  defp normalize_status_filter(status) when is_binary(status) do
+    case String.downcase(String.trim(status)) do
+      "online" -> "online"
+      "degraded" -> "degraded"
+      "offline" -> "offline"
+      "unknown" -> "unknown"
+      "other" -> "unknown"
+      "others" -> "unknown"
+      _ -> "all"
+    end
+  end
+
+  defp normalize_status_filter(_status), do: "all"
+
+  defp normalize_sort_by(by) when is_binary(by) do
+    case String.downcase(String.trim(by)) do
+      "machine" -> "machine"
+      "location" -> "location"
+      "status" -> "status"
+      "events" -> "events"
+      "last_seen" -> "last_seen"
+      _ -> "status"
+    end
+  end
+
+  defp normalize_sort_by(_by), do: "status"
+
+  defp normalize_sort_dir(dir) when is_binary(dir) do
+    case String.downcase(String.trim(dir)) do
+      "desc" -> "desc"
+      _ -> "asc"
+    end
+  end
+
+  defp normalize_sort_dir(_dir), do: "asc"
+
+  defp toggle_sort_dir("asc"), do: "desc"
+  defp toggle_sort_dir(_), do: "asc"
+
+  defp patch_to(socket, overrides) do
+    params =
+      socket
+      |> current_query_params()
+      |> Map.merge(overrides)
+      |> normalize_query_params()
+
+    push_patch(socket, to: ~p"/control-room?#{params}")
+  end
+
+  defp current_query_params(socket) do
+    %{
+      "page" => Integer.to_string(socket.assigns.page),
+      "q" => socket.assigns.search_query,
+      "status" => socket.assigns.status_filter,
+      "sort_by" => socket.assigns.sort_by,
+      "sort_dir" => socket.assigns.sort_dir
+    }
+  end
+
+  defp normalize_query_params(params) do
+    params
+    |> Enum.reduce(%{}, fn
+      {"page", "1"}, acc -> acc
+      {"q", ""}, acc -> acc
+      {"status", "all"}, acc -> acc
+      {"sort_by", "status"}, acc -> acc
+      {"sort_dir", "asc"}, acc -> acc
+      {key, value}, acc when is_binary(value) -> Map.put(acc, key, value)
+      {_key, _value}, acc -> acc
+    end)
+  end
+
+  defp load_page(socket, requested_page, source) do
+    started_at = System.monotonic_time()
+    scope = socket.assigns.current_scope
+
+    page_data =
+      Telemetry.list_nodes_with_hot_state_paginated(
+        scope,
+        page: requested_page,
+        per_page: @nodes_per_page,
+        search: socket.assigns.search_query,
+        status: socket.assigns.status_filter,
+        sort_by: socket.assigns.sort_by,
+        sort_dir: socket.assigns.sort_dir
+      )
+
+    if socket.assigns.refresh_timer_ref do
+      Process.cancel_timer(socket.assigns.refresh_timer_ref)
+    end
+
+    visible_node_ids =
+      page_data.entries
+      |> Enum.map(& &1.machine_identifier)
+      |> MapSet.new()
+
+    socket =
+      socket
+      |> assign(:rows, page_data.entries)
+      |> assign(:page, page_data.page)
+      |> assign(:per_page, page_data.per_page)
+      |> assign(:total_entries, page_data.total_entries)
+      |> assign(:total_pages, page_data.total_pages)
+      |> assign(:has_prev, page_data.has_prev)
+      |> assign(:has_next, page_data.has_next)
+      |> assign(:status_counts, page_data.status_counts)
+      |> assign(:visible_node_ids, visible_node_ids)
+      |> assign(:pending_node_ids, MapSet.new())
+      |> assign(:refresh_timer_ref, nil)
+      |> mark_refreshed()
+
+    emit_telemetry(
+      [:w_core, :dashboard, :load_page],
+      %{
+        duration: System.monotonic_time() - started_at
+      },
+      %{
+        source: source,
+        page: page_data.page,
+        per_page: page_data.per_page,
+        total_entries: page_data.total_entries,
+        has_search: socket.assigns.search_query != "",
+        status_filter: socket.assigns.status_filter,
+        sort_by: socket.assigns.sort_by,
+        sort_dir: socket.assigns.sort_dir
+      }
+    )
+
+    socket =
+      if source in [:auto_refresh, :error_resolution] do
+        if socket.assigns.expanded_machine_id &&
+             MapSet.member?(visible_node_ids, socket.assigns.expanded_machine_id) do
+          load_machine_errors(socket, socket.assigns.expanded_machine_id, socket.assigns.error_page)
+        else
+          clear_machine_errors(socket)
+        end
+      else
+        clear_machine_errors(socket)
+      end
+
+    socket
+    |> assign(:selected_ids, MapSet.new())
+    |> assign(:select_all_pages, false)
+  end
+
+  defp load_machine_errors(socket, nil, _page), do: clear_machine_errors(socket)
+
+  defp load_machine_errors(socket, machine_identifier, page) do
+    error_page =
+      Telemetry.list_machine_error_events(socket.assigns.current_scope, machine_identifier,
+        page: page,
+        per_page: @machine_errors_per_page
+      )
+
+    socket
+    |> assign(:expanded_machine_id, machine_identifier)
+    |> assign(:loading_machine_id, nil)
+    |> assign(:error_rows, error_page.entries)
+    |> assign(:error_page, error_page.page)
+    |> assign(:error_total_entries, error_page.total_entries)
+    |> assign(:error_total_pages, error_page.total_pages)
+    |> assign(:error_has_prev, error_page.has_prev)
+    |> assign(:error_has_next, error_page.has_next)
+    |> assign(:selected_error_ids, MapSet.new())
+  end
+
+  defp clear_machine_errors(socket) do
+    socket
+    |> assign(:expanded_machine_id, nil)
+    |> assign(:loading_machine_id, nil)
+    |> assign(:error_rows, [])
+    |> assign(:error_page, 1)
+    |> assign(:error_total_entries, 0)
+    |> assign(:error_total_pages, 1)
+    |> assign(:error_has_prev, false)
+    |> assign(:error_has_next, false)
+    |> assign(:selected_error_ids, MapSet.new())
+  end
+
+  defp emit_telemetry(event, measurements, metadata) do
+    :telemetry.execute(event, measurements, metadata)
+  end
+
+  defp summary_card_class(true, color) do
+    base =
+      "cursor-pointer flex items-center justify-between rounded-xl border px-2 py-3 sm:px-4 shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/40 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+
+    case color do
+      "zinc" ->
+        "#{base} border-zinc-300 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800"
+
+      "emerald" ->
+        "#{base} border-emerald-300 bg-emerald-100 dark:border-emerald-700/60 dark:bg-emerald-900/35"
+
+      "amber" ->
+        "#{base} border-amber-300 bg-amber-100 dark:border-amber-700/60 dark:bg-amber-900/35"
+
+      "rose" ->
+        "#{base} border-rose-300 bg-rose-100 dark:border-rose-700/60 dark:bg-rose-900/35"
+
+      _ ->
+        "#{base} border-indigo-300 bg-indigo-100 dark:border-indigo-700/60 dark:bg-indigo-900/35"
+    end
+  end
+
+  defp summary_card_class(false, color) do
+    base =
+      "cursor-pointer flex items-center justify-between rounded-xl border px-2 py-3 sm:px-4 shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-2 hover:ring-indigo-400/30 hover:brightness-110"
+
+    case color do
+      "zinc" ->
+        "#{base} border-zinc-300 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
+
+      "emerald" ->
+        "#{base} border-emerald-200/70 bg-emerald-50/70 dark:border-emerald-800/50 dark:bg-emerald-900/20"
+
+      "amber" ->
+        "#{base} border-amber-200/70 bg-amber-50/70 dark:border-amber-800/50 dark:bg-amber-900/20"
+
+      "rose" ->
+        "#{base} border-rose-200/70 bg-rose-50/70 dark:border-rose-800/50 dark:bg-rose-900/20"
+
+      _ ->
+        "#{base} border-indigo-200/70 bg-indigo-50/70 dark:border-indigo-800/50 dark:bg-indigo-900/20"
+    end
+  end
+
+  defp empty_state_text("", "all"), do: "No telemetry nodes found for this account yet."
+
+  defp empty_state_text("", status_filter) do
+    "No #{status_filter} machines match the current filters."
+  end
+
+  defp empty_state_text(_query, "all"), do: "No machines match your search."
+
+  defp empty_state_text(_query, status_filter) do
+    "No #{status_filter} machines match your search and filters."
+  end
+
+  defp has_active_filters?("", "all"), do: false
+  defp has_active_filters?(_search_query, _status_filter), do: true
+
+  defp mark_refreshed(socket) do
+    socket
+    |> assign(:seconds_until_refresh, socket.assigns.auto_refresh_seconds)
+  end
+
+  defp countdown_offset(seconds_until_refresh, auto_refresh_seconds) do
+    progress =
+      seconds_until_refresh
+      |> max(0)
+      |> min(auto_refresh_seconds)
+      |> Kernel./(auto_refresh_seconds)
+
+    Float.round(@countdown_circumference * (1 - progress), 2)
+  end
+
+  defp auto_refresh_seconds do
+    :w_core
+    |> Application.get_env(:dashboard_auto_refresh_seconds, @default_auto_refresh_seconds)
+    |> normalize_auto_refresh_seconds()
+  end
+
+  defp normalize_auto_refresh_seconds(value) when is_integer(value) do
+    value
+    |> max(@min_auto_refresh_seconds)
+    |> min(@max_auto_refresh_seconds)
+  end
+
+  defp normalize_auto_refresh_seconds(_value), do: @default_auto_refresh_seconds
+
+  defp aria_sort(by, current_by, current_dir) do
+    cond do
+      by != current_by -> "none"
+      current_dir == "desc" -> "descending"
+      true -> "ascending"
+    end
+  end
+
+  defp aria_pressed(true), do: "true"
+  defp aria_pressed(false), do: "false"
+
+  attr :by, :string, required: true
+  attr :current_by, :string, required: true
+  attr :current_dir, :string, required: true
+  slot :inner_block, required: true
+
+  defp sort_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="sort"
+      phx-value-by={@by}
+      class="cursor-pointer group inline-flex items-center gap-1.5 font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
+    >
+      {render_slot(@inner_block)}
+      <span
+        :if={@current_by == @by}
+        class="inline-flex items-center justify-center text-sm font-bold leading-none text-zinc-600 dark:text-zinc-100"
+      >
+        {if @current_dir == "asc", do: "↑", else: "↓"}
+      </span>
+      <span
+        :if={@current_by != @by}
+        aria-hidden="true"
+        class="inline-flex items-center justify-center text-sm font-semibold leading-none text-zinc-600 transition-colors group-hover:text-zinc-900 dark:text-zinc-400 dark:group-hover:text-zinc-200"
+      >
+        ↕
+      </span>
+    </button>
+    """
+  end
+
+  defp schedule_auto_refresh(auto_refresh_seconds) do
+    Process.send_after(self(), :auto_refresh_page, auto_refresh_seconds * @countdown_tick_ms)
+  end
+
+  defp schedule_countdown_tick do
+    Process.send_after(self(), :countdown_tick, @countdown_tick_ms)
+  end
+end
