@@ -186,25 +186,30 @@ defmodule WCore.Telemetry do
   """
   @spec ensure_local_demo_data(Scope.t()) :: :ok
   def ensure_local_demo_data(%Scope{} = scope) do
-    if Application.get_env(:w_core, :auto_seed_demo_data, false) do
-      _result =
-        Repo.transaction(fn ->
-          existing_nodes_count =
-            from(n in Node,
-              where: n.user_id == ^scope.user.id,
-              select: count(n.id)
-            )
-            |> Repo.one()
-
-          if existing_nodes_count == 0 do
-            seed_demo_nodes_for_scope(scope)
-          end
-        end)
-
-      :ok
-    else
-      :ok
+    case Application.get_env(:w_core, :auto_seed_demo_data, false) do
+      true -> ensure_local_demo_data_enabled(scope)
+      false -> :ok
     end
+  end
+
+  defp ensure_local_demo_data_enabled(%Scope{} = scope) do
+    _result =
+      Repo.transaction(fn ->
+        case scoped_nodes_count(scope) do
+          0 -> seed_demo_nodes_for_scope(scope)
+          _count -> :ok
+        end
+      end)
+
+    :ok
+  end
+
+  defp scoped_nodes_count(%Scope{} = scope) do
+    from(n in Node,
+      where: n.user_id == ^scope.user.id,
+      select: count(n.id)
+    )
+    |> Repo.one()
   end
 
   defp to_hot_row(node) do
@@ -860,7 +865,7 @@ defmodule WCore.Telemetry do
   defp find_error_message(payload) when is_map(payload) do
     ["error_message", "message", "reason", "error", "detail", "code"]
     |> Enum.find_value(fn key ->
-      Map.get(payload, key) || Map.get(payload, String.to_atom(key))
+      Map.get(payload, key) || map_get_by_string_key(payload, key)
     end)
     |> case do
       nil -> nil
@@ -874,6 +879,16 @@ defmodule WCore.Telemetry do
   end
 
   defp find_error_message(_payload), do: nil
+
+  defp map_get_by_string_key(map, key) do
+    Enum.find_value(map, fn
+      {existing_key, value} when is_atom(existing_key) ->
+        if Atom.to_string(existing_key) == key, do: value
+
+      _entry ->
+        nil
+    end)
+  end
 
   defp default_error_message("offline"), do: "Machine reported offline"
   defp default_error_message("degraded"), do: "Machine reported degraded state"
@@ -959,7 +974,7 @@ defmodule WCore.Telemetry do
           "machine_identifier" => machine_identifier,
           "temperature_c" => 60 + rem(index * 3, 25),
           "rpm" => 900 + rem(index * 137, 2200),
-          "note" => if(status == "online", do: "Operational", else: "Needs attention")
+          "note" => payload_note_for_seed(status)
         }
 
         %{
@@ -994,15 +1009,14 @@ defmodule WCore.Telemetry do
 
         Enum.map(0..2, fn offset ->
           occurred_at = DateTime.add(now_utc, -((index * 300) + offset * 60), :second)
-          event_status = if(status == "unknown", do: "online", else: status)
+          event_status = event_status_for_seed(status)
           message = Enum.at(error_messages, rem(index + offset, length(error_messages)))
-          is_error = event_status in ["offline", "degraded"]
 
           %{
             machine_identifier: machine_identifier,
             status: event_status,
             payload: %{"source" => "demo_seed", "sequence" => offset + 1},
-            error_message: if(is_error, do: message, else: nil),
+            error_message: seed_error_message(event_status, message),
             occurred_at: occurred_at,
             processed_at: DateTime.add(occurred_at, 15, :second),
             resolved_at: nil,
@@ -1014,6 +1028,15 @@ defmodule WCore.Telemetry do
 
     Repo.insert_all(TelemetryEvent, telemetry_rows)
   end
+
+  defp payload_note_for_seed("online"), do: "Operational"
+  defp payload_note_for_seed(_status), do: "Needs attention"
+
+  defp event_status_for_seed("unknown"), do: "online"
+  defp event_status_for_seed(status), do: status
+
+  defp seed_error_message(status, message) when status in ["offline", "degraded"], do: message
+  defp seed_error_message(_status, _message), do: nil
 
   defp empty_machine_error_page(per_page) do
     %{
