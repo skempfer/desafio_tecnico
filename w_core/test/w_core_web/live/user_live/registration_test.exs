@@ -8,8 +8,8 @@ defmodule WCoreWeb.UserLive.RegistrationTest do
     test "renders registration page", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "Criar conta ou entrar"
-      assert html =~ "Cadastrar"
+      assert html =~ "Create account or sign in"
+      assert html =~ "Register"
     end
 
     test "redirects if already logged in", %{conn: conn} do
@@ -30,7 +30,7 @@ defmodule WCoreWeb.UserLive.RegistrationTest do
         |> element("#registration_form")
         |> render_change(user: %{"email" => "with spaces"})
 
-      assert result =~ "Criar conta ou entrar"
+      assert result =~ "Create account or sign in"
       assert result =~ "must have the @ sign and no spaces"
     end
   end
@@ -67,16 +67,15 @@ defmodule WCoreWeb.UserLive.RegistrationTest do
   end
 
   describe "registration navigation" do
-    test "stays on registration page when the Entrar button is clicked", %{conn: conn} do
+    test "stays on registration page when the Sign in button is clicked", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
-      {:ok, _login_live, login_html} =
+      assert {:error, {:live_redirect, %{to: path}}} =
         lv
-        |> element("main a", "Entrar")
+        |> element("main a", "Sign in")
         |> render_click()
-        |> follow_redirect(conn, ~p"/users/register")
 
-      assert login_html =~ "Criar conta ou entrar"
+      assert path == ~p"/users/log-in"
     end
   end
 end

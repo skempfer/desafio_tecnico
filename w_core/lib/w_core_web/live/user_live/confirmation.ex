@@ -128,7 +128,7 @@ defmodule WCoreWeb.UserLive.Confirmation do
 
   @impl true
   @doc "Marks the form to trigger HTTP submission for the selected option."
-  @spec handle_event(String.t(), %{"user" => confirmation_params()}, Phoenix.LiveView.Socket.t()) ::
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   def handle_event("submit", %{"user" => params}, socket) do
     {:noreply, assign(socket, form: to_form(params, as: "user"), trigger_submit: true)}

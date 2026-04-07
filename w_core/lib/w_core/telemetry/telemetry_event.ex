@@ -14,10 +14,10 @@ defmodule WCore.Telemetry.TelemetryEvent do
           machine_identifier: String.t() | nil,
           status: String.t() | nil,
           payload: map() | nil,
-      error_message: String.t() | nil,
+          error_message: String.t() | nil,
           occurred_at: DateTime.t() | nil,
           processed_at: DateTime.t() | nil,
-      resolved_at: DateTime.t() | nil,
+          resolved_at: DateTime.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -54,7 +54,15 @@ defmodule WCore.Telemetry.TelemetryEvent do
   @spec changeset(t(), attrs()) :: Ecto.Changeset.t()
   def changeset(event, attrs) do
     event
-    |> cast(attrs, [:machine_identifier, :status, :payload, :error_message, :occurred_at, :processed_at, :resolved_at])
+    |> cast(attrs, [
+      :machine_identifier,
+      :status,
+      :payload,
+      :error_message,
+      :occurred_at,
+      :processed_at,
+      :resolved_at
+    ])
     |> validate_required([:machine_identifier, :status, :occurred_at])
   end
 end

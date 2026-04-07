@@ -2,8 +2,8 @@ defmodule WCore.TelemetryTest do
   use WCore.DataCase
 
   alias WCore.Telemetry
-  alias WCore.Telemetry.TelemetryEvent
   alias WCore.Telemetry.NodeMetrics
+  alias WCore.Telemetry.TelemetryEvent
 
   describe "nodes" do
     alias WCore.Telemetry.Node
@@ -48,7 +48,11 @@ defmodule WCore.TelemetryTest do
     test "update_node/3 with valid data updates the node" do
       scope = user_scope_fixture()
       node = node_fixture(scope)
-      update_attrs = %{location: "some updated location", machine_identifier: "some updated machine_identifier"}
+
+      update_attrs = %{
+        location: "some updated location",
+        machine_identifier: "some updated machine_identifier"
+      }
 
       assert {:ok, %Node{} = node} = Telemetry.update_node(scope, node, update_attrs)
       assert node.location == "some updated location"
@@ -126,7 +130,9 @@ defmodule WCore.TelemetryTest do
       scope = user_scope_fixture()
 
       Enum.each(1..25, fn i ->
-        node_fixture(scope, %{machine_identifier: "node-#{String.pad_leading(Integer.to_string(i), 2, "0")}"})
+        node_fixture(scope, %{
+          machine_identifier: "node-#{String.pad_leading(Integer.to_string(i), 2, "0")}"
+        })
       end)
 
       page = Telemetry.list_nodes_with_hot_state_paginated(scope)
@@ -145,7 +151,9 @@ defmodule WCore.TelemetryTest do
       scope = user_scope_fixture()
 
       Enum.each(1..25, fn i ->
-        node_fixture(scope, %{machine_identifier: "node-#{String.pad_leading(Integer.to_string(i), 2, "0")}"})
+        node_fixture(scope, %{
+          machine_identifier: "node-#{String.pad_leading(Integer.to_string(i), 2, "0")}"
+        })
       end)
 
       page = Telemetry.list_nodes_with_hot_state_paginated(scope, page: 2, per_page: 20)
@@ -262,7 +270,11 @@ defmodule WCore.TelemetryTest do
           sort_dir: "desc"
         )
 
-      assert Enum.map(page_events_desc.entries, & &1.machine_identifier) == ["node-b", "node-a", "node-c"]
+      assert Enum.map(page_events_desc.entries, & &1.machine_identifier) == [
+               "node-b",
+               "node-a",
+               "node-c"
+             ]
 
       page_last_seen_desc =
         Telemetry.list_nodes_with_hot_state_paginated(scope,
@@ -270,7 +282,11 @@ defmodule WCore.TelemetryTest do
           sort_dir: "desc"
         )
 
-      assert Enum.map(page_last_seen_desc.entries, & &1.machine_identifier) == ["node-c", "node-b", "node-a"]
+      assert Enum.map(page_last_seen_desc.entries, & &1.machine_identifier) == [
+               "node-c",
+               "node-b",
+               "node-a"
+             ]
     end
   end
 

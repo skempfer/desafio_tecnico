@@ -90,7 +90,6 @@ defmodule WCoreWeb.UserLive.Registration do
     {:ok, redirect(socket, to: WCoreWeb.UserAuth.signed_in_path(socket))}
   end
 
-  @doc "Initializes the email registration form for unauthenticated users."
   @spec mount(term(), term(), term()) :: term()
   def mount(_params, _session, socket) do
     changeset = Accounts.change_user_email(%User{}, %{}, validate_unique: false)
@@ -99,7 +98,7 @@ defmodule WCoreWeb.UserLive.Registration do
   end
 
   @impl true
-  @doc "Handles registration submission and sends login instructions on success."
+  @doc "Handles registration form events (save and validate)."
   @spec handle_event(term(), term(), term()) :: term()
   def handle_event("save", %{"user" => user_params}, socket) do
     case Accounts.register_user(user_params) do
@@ -123,15 +122,14 @@ defmodule WCoreWeb.UserLive.Registration do
     end
   end
 
-  @doc "Validates the registration form as the user types."
-  @spec handle_event(String.t(), %{"user" => registration_params()}, Phoenix.LiveView.Socket.t()) ::
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   def handle_event("validate", %{"user" => user_params}, socket) do
     changeset = Accounts.change_user_email(%User{}, user_params, validate_unique: false)
     {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
   end
 
-  @doc "Transforms a changeset into a LiveView form assign."
+  @doc false
   @spec assign_form(Phoenix.LiveView.Socket.t(), Ecto.Changeset.t()) :: Phoenix.LiveView.Socket.t()
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
     form = to_form(changeset, as: "user")

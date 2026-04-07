@@ -69,11 +69,11 @@ defmodule WCoreWeb.UserLive.ConfirmationTest do
       # log out, new conn
       conn = build_conn()
 
-      {:ok, _lv, html} =
-        live(conn, ~p"/users/log-in/#{token}")
-        |> follow_redirect(conn, ~p"/users/log-in")
+      assert {:error, {:live_redirect, %{to: path, flash: %{"error" => message}}}} =
+               live(conn, ~p"/users/log-in/#{token}")
 
-      assert html =~ "Magic link is invalid or it has expired"
+      assert path == ~p"/users/log-in"
+      assert message =~ "Magic link is invalid or it has expired"
     end
 
     test "logs confirmed user in without changing confirmed_at", %{
@@ -100,19 +100,19 @@ defmodule WCoreWeb.UserLive.ConfirmationTest do
       # log out, new conn
       conn = build_conn()
 
-      {:ok, _lv, html} =
-        live(conn, ~p"/users/log-in/#{token}")
-        |> follow_redirect(conn, ~p"/users/log-in")
+      assert {:error, {:live_redirect, %{to: path, flash: %{"error" => message}}}} =
+               live(conn, ~p"/users/log-in/#{token}")
 
-      assert html =~ "Magic link is invalid or it has expired"
+      assert path == ~p"/users/log-in"
+      assert message =~ "Magic link is invalid or it has expired"
     end
 
     test "raises error for invalid token", %{conn: conn} do
-      {:ok, _lv, html} =
-        live(conn, ~p"/users/log-in/invalid-token")
-        |> follow_redirect(conn, ~p"/users/log-in")
+      assert {:error, {:live_redirect, %{to: path, flash: %{"error" => message}}}} =
+               live(conn, ~p"/users/log-in/invalid-token")
 
-      assert html =~ "Magic link is invalid or it has expired"
+      assert path == ~p"/users/log-in"
+      assert message =~ "Magic link is invalid or it has expired"
     end
   end
 end

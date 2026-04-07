@@ -213,7 +213,6 @@ defmodule WCore.Telemetry do
             }
         end
     end
-
   end
 
   defp normalize_positive_int(value, _default) when is_integer(value) and value > 0, do: value
@@ -921,7 +920,7 @@ defmodule WCore.Telemetry do
   defp current_snapshot_for_status_sync(%Node{} = node, machine_identifier) do
     case Cache.get(machine_identifier) do
       {_status, count, payload, _timestamp} ->
-        {count, payload || %{}}
+        {count, payload}
 
       nil ->
         case Repo.get_by(NodeMetrics, node_id: node.id) do

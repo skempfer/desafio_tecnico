@@ -77,8 +77,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
       |> assign(:selected_error_ids, MapSet.new())
       |> load_page(page, :mount)
 
-    {:ok,
-     socket}
+    {:ok, socket}
   end
 
   @impl true
@@ -737,7 +736,8 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   @impl true
   def handle_event("resolve_selected_errors", _params, socket) do
-    if MapSet.size(socket.assigns.selected_error_ids) == 0 or is_nil(socket.assigns.expanded_machine_id) do
+    if MapSet.size(socket.assigns.selected_error_ids) == 0 or
+         is_nil(socket.assigns.expanded_machine_id) do
       {:noreply, socket}
     else
       Telemetry.resolve_machine_error_events(
@@ -881,8 +881,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     header = "Machine,Location,Status,Events,Last Seen\r\n"
 
     data =
-      rows
-      |> Enum.map(fn row ->
+      Enum.map_join(rows, fn row ->
         [
           csv_escape(row.machine_identifier),
           csv_escape(row.location || ""),
@@ -893,7 +892,6 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         |> Enum.join(",")
         |> Kernel.<>("\r\n")
       end)
-      |> Enum.join()
 
     header <> data
   end
