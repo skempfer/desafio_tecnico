@@ -566,6 +566,45 @@ defmodule WCoreWeb.TelemetryLive.DashboardTest do
     refute html =~ "Fault 2"
   end
 
+  test "keeps selected error checkboxes checked after auto refresh", %{conn: conn} do
+    user = user_fixture()
+    scope = Scope.for_user(user)
+    base_ts = ~U[2026-04-05 20:00:00Z]
+
+    Telemetry.create_node(scope, %{machine_identifier: "reactor-03", location: "Bay C"})
+
+    Enum.each(1..2, fn i ->
+      assert {:ok, _count} =
+               Ingester.ingest_event(
+                 "reactor-03",
+                 "offline",
+                 %{"message" => "Auto #{i}"},
+                 DateTime.add(base_ts, i, :second)
+               )
+    end)
+
+    {:ok, lv, _html} =
+      conn
+      |> log_in_user(user)
+      |> live(~p"/control-room")
+
+    lv
+    |> element("#node-reactor-03")
+    |> render_click()
+
+    [first_error | _rest] =
+      Telemetry.list_machine_error_events(scope, "reactor-03", page: 1, per_page: 10).entries
+
+    lv
+    |> form("#error-select-#{first_error.id}", %{"error_id" => "#{first_error.id}", "selected" => "true"})
+    |> render_change()
+
+    send(lv.pid, :auto_refresh_page)
+    _ = render(lv)
+
+    assert has_element?(lv, "#error-select-#{first_error.id} input[type='checkbox'][checked]")
+  end
+
   test "shows contextual empty state and allows resetting filters", %{conn: conn} do
     user = user_fixture()
     scope = Scope.for_user(user)
