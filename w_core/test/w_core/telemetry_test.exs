@@ -1,9 +1,73 @@
 defmodule WCore.TelemetryTest do
   use WCore.DataCase
 
+  import Ecto.Query
+
   alias WCore.Telemetry
   alias WCore.Telemetry.NodeMetrics
   alias WCore.Telemetry.TelemetryEvent
+
+  describe "local demo bootstrap" do
+    import WCore.AccountsFixtures, only: [user_scope_fixture: 0]
+    import WCore.TelemetryFixtures
+
+    setup do
+      previous_value = Application.get_env(:w_core, :auto_seed_demo_data, false)
+      Application.put_env(:w_core, :auto_seed_demo_data, true)
+
+      on_exit(fn ->
+        Application.put_env(:w_core, :auto_seed_demo_data, previous_value)
+      end)
+
+      :ok
+    end
+
+    test "ensure_local_demo_data/1 creates baseline data for empty scoped user" do
+      scope = user_scope_fixture()
+
+      assert [] == Telemetry.list_nodes(scope)
+
+      assert :ok = Telemetry.ensure_local_demo_data(scope)
+
+      page = Telemetry.list_nodes_with_hot_state_paginated(scope)
+      assert page.total_entries == 28
+      assert page.total_pages == 2
+
+      assert Enum.any?(page.entries, fn row ->
+               String.starts_with?(row.machine_identifier, "demo-#{scope.user.id}-machine-")
+             end)
+
+      events_count =
+        from(e in TelemetryEvent,
+          where: like(e.machine_identifier, ^"demo-#{scope.user.id}-machine-%")
+        )
+        |> Repo.aggregate(:count)
+
+      assert events_count > 0
+    end
+
+    test "ensure_local_demo_data/1 is idempotent and does not overwrite existing user data" do
+      scope = user_scope_fixture()
+
+      assert :ok = Telemetry.ensure_local_demo_data(scope)
+
+      demo_nodes_count_after_first_run = length(Telemetry.list_nodes(scope))
+
+      assert :ok = Telemetry.ensure_local_demo_data(scope)
+
+      demo_nodes_count_after_second_run = length(Telemetry.list_nodes(scope))
+      assert demo_nodes_count_after_second_run == demo_nodes_count_after_first_run
+
+      custom_scope = user_scope_fixture()
+      _node = node_fixture(custom_scope, %{machine_identifier: "custom-seeded-node"})
+
+      assert :ok = Telemetry.ensure_local_demo_data(custom_scope)
+
+      scoped_nodes = Telemetry.list_nodes(custom_scope)
+      assert length(scoped_nodes) == 1
+      assert hd(scoped_nodes).machine_identifier == "custom-seeded-node"
+    end
+  end
 
   describe "nodes" do
     alias WCore.Telemetry.Node

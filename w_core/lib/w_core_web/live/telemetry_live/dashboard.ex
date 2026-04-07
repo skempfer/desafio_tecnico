@@ -33,6 +33,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   def mount(params, _session, socket) do
     auto_refresh_seconds = auto_refresh_seconds()
+    Telemetry.ensure_local_demo_data(socket.assigns.current_scope)
 
     if connected?(socket) do
       Telemetry.subscribe_dashboard_updates()
@@ -1101,6 +1102,14 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
         per_page: @machine_errors_per_page
       )
 
+    selected_error_ids =
+      preserve_visible_error_selection(
+        socket.assigns.expanded_machine_id,
+        machine_identifier,
+        socket.assigns.selected_error_ids,
+        error_page.entries
+      )
+
     socket
     |> assign(:expanded_machine_id, machine_identifier)
     |> assign(:loading_machine_id, nil)
@@ -1110,7 +1119,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     |> assign(:error_total_pages, error_page.total_pages)
     |> assign(:error_has_prev, error_page.has_prev)
     |> assign(:error_has_next, error_page.has_next)
-    |> assign(:selected_error_ids, MapSet.new())
+    |> assign(:selected_error_ids, selected_error_ids)
   end
 
   defp clear_machine_errors(socket) do
@@ -1124,6 +1133,24 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
     |> assign(:error_has_prev, false)
     |> assign(:error_has_next, false)
     |> assign(:selected_error_ids, MapSet.new())
+  end
+
+  defp preserve_visible_error_selection(
+         expanded_machine_id,
+         machine_identifier,
+         selected_error_ids,
+         error_rows
+       ) do
+    if expanded_machine_id == machine_identifier do
+      visible_error_ids =
+        error_rows
+        |> Enum.map(& &1.id)
+        |> MapSet.new()
+
+      MapSet.intersection(selected_error_ids, visible_error_ids)
+    else
+      MapSet.new()
+    end
   end
 
   defp emit_telemetry(event, measurements, metadata) do

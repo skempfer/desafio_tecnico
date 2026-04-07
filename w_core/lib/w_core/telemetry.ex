@@ -178,6 +178,40 @@ defmodule WCore.Telemetry do
     end
   end
 
+  @doc """
+  Ensures a baseline demo dataset exists for the authenticated scope in local development.
+
+  This is intentionally gated by `:auto_seed_demo_data` config and only seeds
+  when the current user has no nodes yet.
+  """
+  @spec ensure_local_demo_data(Scope.t()) :: :ok
+  def ensure_local_demo_data(%Scope{} = scope) do
+    case Application.get_env(:w_core, :auto_seed_demo_data, false) do
+      true -> ensure_local_demo_data_enabled(scope)
+      false -> :ok
+    end
+  end
+
+  defp ensure_local_demo_data_enabled(%Scope{} = scope) do
+    _result =
+      Repo.transaction(fn ->
+        case scoped_nodes_count(scope) do
+          0 -> seed_demo_nodes_for_scope(scope)
+          _count -> :ok
+        end
+      end)
+
+    :ok
+  end
+
+  defp scoped_nodes_count(%Scope{} = scope) do
+    from(n in Node,
+      where: n.user_id == ^scope.user.id,
+      select: count(n.id)
+    )
+    |> Repo.one()
+  end
+
   defp to_hot_row(node) do
     case Cache.get(node.machine_identifier) do
       {status, count, payload, timestamp} ->
@@ -831,7 +865,7 @@ defmodule WCore.Telemetry do
   defp find_error_message(payload) when is_map(payload) do
     ["error_message", "message", "reason", "error", "detail", "code"]
     |> Enum.find_value(fn key ->
-      Map.get(payload, key) || Map.get(payload, String.to_atom(key))
+      Map.get(payload, key) || map_get_by_string_key(payload, key)
     end)
     |> case do
       nil -> nil
@@ -846,9 +880,163 @@ defmodule WCore.Telemetry do
 
   defp find_error_message(_payload), do: nil
 
+  defp map_get_by_string_key(map, key) do
+    Enum.find_value(map, fn
+      {existing_key, value} when is_atom(existing_key) ->
+        if Atom.to_string(existing_key) == key, do: value
+
+      _entry ->
+        nil
+    end)
+  end
+
   defp default_error_message("offline"), do: "Machine reported offline"
   defp default_error_message("degraded"), do: "Machine reported degraded state"
   defp default_error_message(_status), do: "Telemetry error event"
+
+  defp seed_demo_nodes_for_scope(%Scope{} = scope) do
+    machine_count = 28
+
+    status_distribution =
+      List.duplicate("online", 14) ++
+        List.duplicate("degraded", 8) ++
+        List.duplicate("offline", 4) ++
+        List.duplicate("unknown", 2)
+
+    locations = [
+      "Line A",
+      "Line B",
+      "Line C",
+      "Line D",
+      "North Wing",
+      "South Wing",
+      "Bay 1",
+      "Bay 2",
+      "Bay 3",
+      "Warehouse"
+    ]
+
+    error_messages = [
+      "Network timeout while reading telemetry bus",
+      "Sensor drift detected above threshold",
+      "Power voltage outside operational bounds",
+      "Hydraulic pressure unstable in manifold",
+      "Temperature critical alert on chamber",
+      "Firmware exception while processing cycle"
+    ]
+
+    prefix = "demo-#{scope.user.id}-machine-"
+
+    machine_identifiers =
+      1..machine_count
+      |> Enum.map(fn i ->
+        "#{prefix}#{String.pad_leading(Integer.to_string(i), 2, "0")}"
+      end)
+
+    now_utc = DateTime.utc_now() |> DateTime.truncate(:second)
+    now_naive = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    node_rows =
+      machine_identifiers
+      |> Enum.with_index(1)
+      |> Enum.map(fn {machine_identifier, index} ->
+        %{
+          machine_identifier: machine_identifier,
+          location: Enum.at(locations, rem(index - 1, length(locations))),
+          user_id: scope.user.id,
+          inserted_at: now_utc,
+          updated_at: now_utc
+        }
+      end)
+
+    Repo.insert_all(Node, node_rows,
+      on_conflict: :nothing,
+      conflict_target: [:machine_identifier]
+    )
+
+    nodes_by_machine_identifier =
+      from(n in Node,
+        where: n.user_id == ^scope.user.id,
+        where: n.machine_identifier in ^machine_identifiers,
+        select: {n.machine_identifier, n.id}
+      )
+      |> Repo.all()
+      |> Map.new()
+
+    metrics_rows =
+      machine_identifiers
+      |> Enum.with_index(1)
+      |> Enum.map(fn {machine_identifier, index} ->
+        status = Enum.at(status_distribution, index - 1)
+        seen_at = DateTime.add(now_utc, -(index * 90), :second)
+
+        payload = %{
+          "machine_identifier" => machine_identifier,
+          "temperature_c" => 60 + rem(index * 3, 25),
+          "rpm" => 900 + rem(index * 137, 2200),
+          "note" => payload_note_for_seed(status)
+        }
+
+        %{
+          node_id: Map.fetch!(nodes_by_machine_identifier, machine_identifier),
+          status: status,
+          total_events_processed: 100 + index * 7,
+          last_payload: payload,
+          last_seen_at: seen_at,
+          inserted_at: now_naive,
+          updated_at: now_naive
+        }
+      end)
+
+    Repo.insert_all(NodeMetrics, metrics_rows,
+      on_conflict:
+        {:replace,
+         [
+           :status,
+           :total_events_processed,
+           :last_payload,
+           :last_seen_at,
+           :updated_at
+         ]},
+      conflict_target: [:node_id]
+    )
+
+    telemetry_rows =
+      machine_identifiers
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {machine_identifier, index} ->
+        status = Enum.at(status_distribution, index - 1)
+
+        Enum.map(0..2, fn offset ->
+          occurred_at = DateTime.add(now_utc, -((index * 300) + offset * 60), :second)
+          event_status = event_status_for_seed(status)
+          message = Enum.at(error_messages, rem(index + offset, length(error_messages)))
+
+          %{
+            machine_identifier: machine_identifier,
+            status: event_status,
+            payload: %{"source" => "demo_seed", "sequence" => offset + 1},
+            error_message: seed_error_message(event_status, message),
+            occurred_at: occurred_at,
+            processed_at: DateTime.add(occurred_at, 15, :second),
+            resolved_at: nil,
+            inserted_at: now_utc,
+            updated_at: now_utc
+          }
+        end)
+      end)
+
+    Repo.insert_all(TelemetryEvent, telemetry_rows)
+  end
+
+  defp payload_note_for_seed("online"), do: "Operational"
+  defp payload_note_for_seed(_status), do: "Needs attention"
+
+  defp event_status_for_seed("unknown"), do: "online"
+  defp event_status_for_seed(status), do: status
+
+  defp seed_error_message(status, message) when status in ["offline", "degraded"], do: message
+  defp seed_error_message(_status, _message), do: nil
 
   defp empty_machine_error_page(per_page) do
     %{
