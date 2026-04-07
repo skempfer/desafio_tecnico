@@ -28,6 +28,7 @@ config :w_core, WCoreWeb.Endpoint,
   ]
 
 config :w_core, dev_routes: true
+config :w_core, :auto_seed_demo_data, true
 
 config :logger, :default_formatter, format: "[$level] $message\n"
 

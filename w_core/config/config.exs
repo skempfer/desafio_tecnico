@@ -37,6 +37,8 @@ config :w_core,
   ecto_repos: [WCore.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+config :w_core, :auto_seed_demo_data, false
+
 # Configure the endpoint
 config :w_core, WCoreWeb.Endpoint,
   url: [host: "localhost"],

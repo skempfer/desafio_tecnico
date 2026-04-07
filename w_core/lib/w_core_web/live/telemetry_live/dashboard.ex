@@ -33,6 +33,7 @@ defmodule WCoreWeb.TelemetryLive.Dashboard do
 
   def mount(params, _session, socket) do
     auto_refresh_seconds = auto_refresh_seconds()
+    Telemetry.ensure_local_demo_data(socket.assigns.current_scope)
 
     if connected?(socket) do
       Telemetry.subscribe_dashboard_updates()
